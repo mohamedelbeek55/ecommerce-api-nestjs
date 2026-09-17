@@ -6,29 +6,10 @@ import {
 import type { ProductEntity } from './domain/product.entity';
 import { IProductRepository } from './domain/product.repository.interface';
 import { CreateProductDto } from './dto/create-product.dto';
+import { PaginatedProductsResponseDto } from './dto/paginated-products-response.dto';
+import { ProductResponseDto } from './dto/product-response.dto';
 import { QueryProductDto } from './dto/query-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-
-export interface ProductResponse {
-  id: string;
-  name: string;
-  description: string;
-  price: string;
-  stock: number;
-  categoryId: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
 
 function isPrismaErrorWithCode(error: unknown, code: string): boolean {
   return (
@@ -43,9 +24,11 @@ function isPrismaErrorWithCode(error: unknown, code: string): boolean {
 export class ProductsService {
   constructor(
     private readonly productRepository: IProductRepository,
-  ) {}
+  ) { }
 
-  async findAll(query: QueryProductDto): Promise<PaginatedResponse<ProductResponse>> {
+  async findAll(
+    query: QueryProductDto,
+  ): Promise<PaginatedProductsResponseDto> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const result = await this.productRepository.findAll({
@@ -70,7 +53,7 @@ export class ProductsService {
     };
   }
 
-  async findById(id: string): Promise<ProductResponse> {
+  async findById(id: string): Promise<ProductResponseDto> {
     const product = await this.productRepository.findById(id);
 
     if (!product) {
@@ -80,12 +63,12 @@ export class ProductsService {
     return this.toResponse(product);
   }
 
-  async findByCategoryId(categoryId: string): Promise<ProductResponse[]> {
+  async findByCategoryId(categoryId: string): Promise<ProductResponseDto[]> {
     const products = await this.productRepository.findByCategoryId(categoryId);
     return products.map((product) => this.toResponse(product));
   }
 
-  async create(dto: CreateProductDto): Promise<ProductResponse> {
+  async create(dto: CreateProductDto): Promise<ProductResponseDto> {
     try {
       const product = await this.productRepository.create(dto);
       return this.toResponse(product);
@@ -93,7 +76,6 @@ export class ProductsService {
       if (isPrismaErrorWithCode(error, 'P2003')) {
         throw new BadRequestException('Category not found');
       }
-
       throw error;
     }
   }
@@ -101,7 +83,7 @@ export class ProductsService {
   async update(
     id: string,
     dto: UpdateProductDto,
-  ): Promise<ProductResponse> {
+  ): Promise<ProductResponseDto> {
     await this.ensureProductExists(id);
 
     try {
@@ -111,7 +93,6 @@ export class ProductsService {
       if (isPrismaErrorWithCode(error, 'P2003')) {
         throw new BadRequestException('Category not found');
       }
-
       throw error;
     }
   }
@@ -123,13 +104,12 @@ export class ProductsService {
 
   private async ensureProductExists(id: string): Promise<void> {
     const product = await this.productRepository.findById(id);
-
     if (!product) {
       throw new NotFoundException('Product not found');
     }
   }
 
-  private toResponse(product: ProductEntity): ProductResponse {
+  private toResponse(product: ProductEntity): ProductResponseDto {
     return {
       id: product.id,
       name: product.name,

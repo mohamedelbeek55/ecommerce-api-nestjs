@@ -7,19 +7,8 @@ import { Prisma } from '@prisma/client';
 import type { CartEntity } from './domain/cart.entity';
 import { ICartRepository } from './domain/cart.repository.interface';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
+import { CartResponseDto } from './dto/cart-response.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
-
-export interface CartResponse {
-  id: string;
-  items: {
-    productId: string;
-    name: string;
-    price: string;
-    quantity: number;
-    subtotal: string;
-  }[];
-  total: string;
-}
 
 function isPrismaErrorWithCode(error: unknown, code: string): boolean {
   return (
@@ -32,9 +21,9 @@ function isPrismaErrorWithCode(error: unknown, code: string): boolean {
 
 @Injectable()
 export class CartService {
-  constructor(private readonly cartRepository: ICartRepository) {}
+  constructor(private readonly cartRepository: ICartRepository) { }
 
-  async getCart(userId: string): Promise<CartResponse> {
+  async getCart(userId: string): Promise<CartResponseDto> {
     const cart = await this.getOrCreateCart(userId);
     return this.toResponse(cart);
   }
@@ -42,7 +31,7 @@ export class CartService {
   async addItem(
     userId: string,
     dto: AddCartItemDto,
-  ): Promise<CartResponse> {
+  ): Promise<CartResponseDto> {
     const cart = await this.getOrCreateCart(userId);
 
     try {
@@ -56,7 +45,6 @@ export class CartService {
       if (isPrismaErrorWithCode(error, 'P2003')) {
         throw new BadRequestException('Product not found');
       }
-
       throw error;
     }
   }
@@ -65,7 +53,7 @@ export class CartService {
     userId: string,
     productId: string,
     dto: UpdateCartItemDto,
-  ): Promise<CartResponse> {
+  ): Promise<CartResponseDto> {
     const cart = await this.getOrCreateCart(userId);
 
     try {
@@ -79,7 +67,6 @@ export class CartService {
       if (isPrismaErrorWithCode(error, 'P2025')) {
         throw new NotFoundException('Item not in cart');
       }
-
       throw error;
     }
   }
@@ -87,7 +74,7 @@ export class CartService {
   async removeItem(
     userId: string,
     productId: string,
-  ): Promise<CartResponse> {
+  ): Promise<CartResponseDto> {
     const cart = await this.getOrCreateCart(userId);
 
     try {
@@ -100,12 +87,11 @@ export class CartService {
       if (isPrismaErrorWithCode(error, 'P2025')) {
         throw new NotFoundException('Item not in cart');
       }
-
       throw error;
     }
   }
 
-  async clearCart(userId: string): Promise<CartResponse> {
+  async clearCart(userId: string): Promise<CartResponseDto> {
     const cart = await this.getOrCreateCart(userId);
     const clearedCart = await this.cartRepository.clear(cart.id);
     return this.toResponse(clearedCart);
@@ -116,7 +102,7 @@ export class CartService {
     return cart ?? this.cartRepository.createForUser(userId);
   }
 
-  private toResponse(cart: CartEntity): CartResponse {
+  private toResponse(cart: CartEntity): CartResponseDto {
     let total = new Prisma.Decimal(0);
     const items = cart.items.map((item) => {
       const subtotal = item.product.price.mul(item.quantity);

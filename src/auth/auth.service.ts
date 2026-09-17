@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -11,11 +12,11 @@ import type { UserEntity } from '../users/domain/user.entity';
 import { IUserRepository } from '../users/domain/user.repository.interface';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
+import { AuthTokensDto } from './dto/auth-response.dto';
+import { randomBytes } from 'crypto';
+import { EmailService } from '../email/email.service';
 
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
+
 
 @Injectable()
 export class AuthService {
@@ -23,24 +24,37 @@ export class AuthService {
     private readonly userRepository: IUserRepository,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService<Env, true>,
-  ) {}
+    private readonly emailService: EmailService,
 
-  async register(dto: RegisterDto): Promise<AuthTokens> {
+  ) { }
+
+  async register(dto: RegisterDto): Promise<AuthTokensDto> {
     const existingUser = await this.userRepository.findByEmail(dto.email);
     if (existingUser) {
       throw new ConflictException('Email already registered');
     }
 
+    const verificationToken = randomBytes(32).toString('hex');
+    const tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
     const user = await this.userRepository.create({
       email: dto.email,
       password: await bcrypt.hash(dto.password, 12),
       name: dto.name,
+      emailVerificationToken: verificationToken,
+      emailVerificationTokenExpiresAt: tokenExpiresAt,
     });
+    try {
+      await this.emailService.sendVerificationEmail(user.email, user.name, verificationToken);
+    } catch (error) {
+      console.error('Failed to send verification email:', error);
+      // ممكن هنا نضيف منطق إضافي، لكن مش هنعطل التسجيل
+    }
 
     return this.issueTokens(user);
   }
 
-  async login(dto: LoginDto): Promise<AuthTokens> {
+  async login(dto: LoginDto): Promise<AuthTokensDto> {
     const user = await this.userRepository.findByEmail(dto.email);
     const validPassword = user
       ? await bcrypt.compare(dto.password, user.password)
@@ -53,7 +67,7 @@ export class AuthService {
     return this.issueTokens(user);
   }
 
-  async refresh(userId: string, providedRefreshToken: string): Promise<AuthTokens> {
+  async refresh(userId: string, providedRefreshToken: string): Promise<AuthTokensDto> {
     const user = await this.userRepository.findById(userId);
     if (
       !user?.hashedRefreshToken ||
@@ -69,7 +83,7 @@ export class AuthService {
     await this.userRepository.updateRefreshTokenHash(userId, null);
   }
 
-  private async issueTokens(user: UserEntity): Promise<AuthTokens> {
+  private async issueTokens(user: UserEntity): Promise<AuthTokensDto> {
     const accessToken = await this.jwtService.signAsync(
       { sub: user.id, email: user.email, role: user.role },
       {
@@ -91,5 +105,70 @@ export class AuthService {
     );
 
     return { accessToken, refreshToken };
+  }
+  async verifyEmail(token: string): Promise<void> {
+    const user = await this.userRepository.findByVerificationToken(token);
+
+    if (!user) {
+      throw new BadRequestException('Invalid verification token');
+    }
+
+    if (user.emailVerificationTokenExpiresAt && user.emailVerificationTokenExpiresAt < new Date()) {
+      throw new BadRequestException('Verification token has expired');
+    }
+
+    await this.userRepository.updateUserVerificationStatus(user.id, {
+      isEmailVerified: true,
+      emailVerificationToken: null,
+      emailVerificationTokenExpiresAt: null,
+    });
+  }
+
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.userRepository.findByEmail(email);
+
+    // ⚠️ نرجّع 204 دايماً، حتى لو الإيميل مش موجود (منع User Enumeration)
+    if (!user) {
+      return;
+    }
+
+    // ولّد توكن عشوائي + وقت انتهاء (15 دقيقة)
+    const resetToken = randomBytes(32).toString('hex');
+    const tokenExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await this.userRepository.updatePasswordReset(user.id, {
+      passwordResetToken: resetToken,
+      passwordResetTokenExpiresAt: tokenExpiresAt,
+    });
+
+    try {
+      await this.emailService.sendPasswordResetEmail(
+        user.email,
+        user.name,
+        resetToken,
+      );
+    } catch (error) {
+      console.error('Failed to send password reset email:', error);
+      // مش هنعطّل الـ request
+    }
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const user = await this.userRepository.findByPasswordResetToken(token);
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    if (
+      user.passwordResetTokenExpiresAt &&
+      user.passwordResetTokenExpiresAt < new Date()
+    ) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await this.userRepository.updatePassword(user.id, hashedPassword);
   }
 }

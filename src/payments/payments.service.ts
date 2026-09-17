@@ -4,7 +4,8 @@ import Stripe from 'stripe';
 import type { Env } from '../config/env.validation';
 import type { OrderStatus } from '../orders/domain/order.entity';
 import { IOrderRepository } from '../orders/domain/order.repository.interface';
-
+import { CreatePaymentIntentResponseDto } from './dto/create-payment-intent-response.dto';
+import { WebhookResponseDto } from './dto/webhook-response.dto';
 export const STRIPE_CLIENT = Symbol('STRIPE_CLIENT');
 
 @Injectable()
@@ -26,7 +27,7 @@ export class PaymentsService {
   async createPaymentIntent(
     orderId: string,
     userId: string,
-  ): Promise<{ clientSecret: string }> {
+  ): Promise<CreatePaymentIntentResponseDto> {
     const order = await this.orderRepository.findById(userId, orderId);
     if (!order) {
       throw new BadRequestException('Order not found');
@@ -78,20 +79,20 @@ export class PaymentsService {
           }
           paymentIntent = currentOrder.stripePaymentIntentId
             ? await this.stripe.paymentIntents.retrieve(
-                currentOrder.stripePaymentIntentId,
-              )
+              currentOrder.stripePaymentIntentId,
+            )
             : await this.stripe.paymentIntents.create(
-                {
-                  amount,
-                  currency: 'usd',
-                  metadata: { orderId },
-                  automatic_payment_methods: {
-                    enabled: true,
-                    allow_redirects: 'never',
-                  },
+              {
+                amount,
+                currency: 'usd',
+                metadata: { orderId },
+                automatic_payment_methods: {
+                  enabled: true,
+                  allow_redirects: 'never',
                 },
-                { idempotencyKey: `order-payment-intent:${order.id}` },
-              );
+              },
+              { idempotencyKey: `order-payment-intent:${order.id}` },
+            );
           if (!currentOrder.stripePaymentIntentId) {
             await this.orderRepository.updatePaymentIntentId(
               order.id,
@@ -123,7 +124,7 @@ export class PaymentsService {
   async handleWebhookEvent(
     rawBody: Buffer,
     signatureHeader: string | undefined,
-  ): Promise<{ received: true }> {
+  ): Promise<WebhookResponseDto> {
     if (!signatureHeader) {
       throw new BadRequestException('Stripe signature is required');
     }

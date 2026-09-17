@@ -10,9 +10,9 @@ interface AuthenticatedUser {
 
 @Controller('users')
 @ApiTags('users')
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {

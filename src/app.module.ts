@@ -14,6 +14,7 @@ import { ProductsModule } from './products/products.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { UsersModule } from './users/users.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { UsersModule } from './users/users.module';
     CartModule,
     OrdersModule,
     PaymentsModule,
+    EmailModule
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
@@ -54,4 +56,4 @@ import { UsersModule } from './users/users.module';
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
-export class AppModule {}
+export class AppModule { }

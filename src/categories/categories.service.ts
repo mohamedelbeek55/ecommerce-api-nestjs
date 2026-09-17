@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type { CategoryEntity } from './domain/category.entity';
 import { ICategoryRepository } from './domain/category.repository.interface';
+import { CategoryResponseDto } from './dto/category-response.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
@@ -22,25 +23,27 @@ function isPrismaErrorWithCode(error: unknown, code: string): boolean {
 export class CategoriesService {
   constructor(
     private readonly categoryRepository: ICategoryRepository,
-  ) {}
+  ) { }
 
-  findAll(): Promise<CategoryEntity[]> {
-    return this.categoryRepository.findAll();
+  async findAll(): Promise<CategoryResponseDto[]> {
+    const categories = await this.categoryRepository.findAll();
+    return categories.map((category) => this.toResponse(category));
   }
 
-  async findById(id: string): Promise<CategoryEntity> {
+  async findById(id: string): Promise<CategoryResponseDto> {
     const category = await this.categoryRepository.findById(id);
 
     if (!category) {
       throw new NotFoundException('Category not found');
     }
 
-    return category;
+    return this.toResponse(category);
   }
 
-  async create(dto: CreateCategoryDto): Promise<CategoryEntity> {
+  async create(dto: CreateCategoryDto): Promise<CategoryResponseDto> {
     try {
-      return await this.categoryRepository.create(dto);
+      const category = await this.categoryRepository.create(dto);
+      return this.toResponse(category);
     } catch (error) {
       if (isPrismaErrorWithCode(error, 'P2002')) {
         throw new ConflictException('Category name already exists');
@@ -53,11 +56,12 @@ export class CategoriesService {
   async update(
     id: string,
     dto: UpdateCategoryDto,
-  ): Promise<CategoryEntity> {
+  ): Promise<CategoryResponseDto> {
     await this.ensureCategoryExists(id);
 
     try {
-      return await this.categoryRepository.update(id, dto);
+      const category = await this.categoryRepository.update(id, dto);
+      return this.toResponse(category);
     } catch (error) {
       if (isPrismaErrorWithCode(error, 'P2002')) {
         throw new ConflictException('Category name already exists');
@@ -89,5 +93,13 @@ export class CategoriesService {
     if (!category) {
       throw new NotFoundException('Category not found');
     }
+  }
+
+  private toResponse(category: CategoryEntity): CategoryResponseDto {
+    return {
+      id: category.id,
+      name: category.name,
+      createdAt: category.createdAt,
+    };
   }
 }

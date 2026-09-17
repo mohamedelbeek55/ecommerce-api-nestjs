@@ -1,13 +1,5 @@
 import { z } from 'zod';
 
-// ---------------------------------------------------------------------------
-// Schema — single source of truth for all environment variables
-// ---------------------------------------------------------------------------
-
-// NOTE: Zod v4 changed the error param names:
-//   - `required_error` is removed — use `error: 'message'` for both cases
-//   - `invalid_type_error` is removed — use `error: 'message'`
-
 export const envSchema = z.object({
   // Database
   DATABASE_URL: z
@@ -44,19 +36,30 @@ export const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'production', 'test'])
     .default('development'),
+
+  // 👇 Email (Nodemailer / SMTP)
+  EMAIL_HOST: z.string({ error: 'EMAIL_HOST is required' }).min(1),
+  EMAIL_PORT: z
+    .string({ error: 'EMAIL_PORT is required' })
+    .transform((v) => parseInt(v, 10))
+    .pipe(z.number().int().min(1).max(65535)),
+  EMAIL_USER: z.string({ error: 'EMAIL_USER is required' }).min(1),
+  EMAIL_PASS: z.string({ error: 'EMAIL_PASS is required' }).min(1),
+  EMAIL_FROM: z
+    .string({ error: 'EMAIL_FROM is required' })
+    .email('EMAIL_FROM must be a valid email'),
+  EMAIL_SECURE: z
+    .string()
+    .optional()
+    .default('false')
+    .transform((v) => v === 'true')
+    .pipe(z.boolean()),
+  FRONTEND_URL: z
+    .string({ error: 'FRONTEND_URL is required' })
+    .url('FRONTEND_URL must be a valid URL'),
 });
 
-// ---------------------------------------------------------------------------
-// Inferred type — always in sync with the schema above
-// ---------------------------------------------------------------------------
-
 export type Env = z.infer<typeof envSchema>;
-
-// ---------------------------------------------------------------------------
-// Validate function — called by ConfigModule's `validate` option.
-// Throws with a human-readable message on the first failure so the process
-// exits immediately rather than crashing later with a cryptic runtime error.
-// ---------------------------------------------------------------------------
 
 export function validate(config: Record<string, unknown>): Env {
   const result = envSchema.safeParse(config);

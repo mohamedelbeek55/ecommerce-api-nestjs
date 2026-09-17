@@ -14,7 +14,7 @@ export interface UserProfileResponse {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly userRepository: IUserRepository) {}
+  constructor(private readonly userRepository: IUserRepository) { }
 
   async findById(id: string): Promise<UserProfileResponse> {
     const user = await this.userRepository.findById(id);

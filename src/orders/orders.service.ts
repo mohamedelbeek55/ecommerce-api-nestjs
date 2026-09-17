@@ -1,31 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { OrderEntity } from './domain/order.entity';
 import {
   CartEmptyError,
   InsufficientStockError,
 } from './domain/order.entity';
 import { IOrderRepository } from './domain/order.repository.interface';
-
-export interface OrderResponse {
-  id: string;
-  status: string;
-  total: string;
-  items: {
-    productId: string;
-    productName: string;
-    unitPrice: string;
-    quantity: number;
-    subtotal: string;
-  }[];
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { OrderResponseDto } from './dto/order-response.dto';
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly orderRepository: IOrderRepository) {}
+  constructor(private readonly orderRepository: IOrderRepository) { }
 
-  async checkout(userId: string): Promise<OrderResponse> {
+  async checkout(userId: string): Promise<OrderResponseDto> {
     try {
       return this.toResponse(await this.orderRepository.checkout(userId));
     } catch (error) {
@@ -39,12 +29,12 @@ export class OrdersService {
     }
   }
 
-  async findAll(userId: string): Promise<OrderResponse[]> {
+  async findAll(userId: string): Promise<OrderResponseDto[]> {
     const orders = await this.orderRepository.findAllByUserId(userId);
     return orders.map((order) => this.toResponse(order));
   }
 
-  async findById(userId: string, orderId: string): Promise<OrderResponse> {
+  async findById(userId: string, orderId: string): Promise<OrderResponseDto> {
     const order = await this.orderRepository.findById(userId, orderId);
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -52,10 +42,10 @@ export class OrdersService {
     return this.toResponse(order);
   }
 
-  private toResponse(order: OrderEntity): OrderResponse {
+  private toResponse(order: OrderEntity): OrderResponseDto {
     return {
       id: order.id,
-      status: order.status,
+      status: order.status as OrderResponseDto['status'],
       total: order.total.toString(),
       items: order.items.map((item) => ({
         productId: item.productId,
