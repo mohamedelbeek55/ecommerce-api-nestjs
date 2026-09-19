@@ -9,18 +9,32 @@ import type { Env } from './config/env.validation';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   app.enableShutdownHooks();
+
   app.use(helmet());
 
-  // Typed access to validated env vars
+  // CORS: allow the deployed frontend + localhost during development
+  app.enableCors({
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:5173', // Vite
+      'http://localhost:3001', // alt
+      // Add your deployed frontend URL here, e.g.:
+      // 'https://your-frontend.vercel.app',
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+  });
+
   const config = app.get(ConfigService<Env, true>);
   const port = config.get('PORT', { infer: true });
 
-  /**
-   * Global ValidationPipe:
-   *  - whitelist: strips properties not in the DTO
-   *  - forbidNonWhitelisted: rejects requests with unknown properties
-   *  - transform: auto-transforms payloads to DTO class instances
-   */
+  // Trust proxy header only when explicitly enabled (e.g. behind Render/nginx).
+  // Enabling it on a directly-exposed server lets clients spoof X-Forwarded-For
+  // and bypass IP-based rate limiting.
+  if (config.get('TRUST_PROXY', { infer: true })) {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -29,12 +43,13 @@ async function bootstrap() {
     }),
   );
 
-  // All routes are under /api/v1/...
   app.setGlobalPrefix('api/v1');
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('E-Commerce API')
-    .setDescription('NestJS e-commerce API with catalog, cart, orders, and Stripe payments')
+    .setDescription(
+      'NestJS e-commerce API with catalog, cart, orders, and Stripe payments',
+    )
     .setVersion('1.0')
     .addBearerAuth(
       {
@@ -51,7 +66,7 @@ async function bootstrap() {
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, swaggerDocument);
 
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   console.log(`Application running on: http://localhost:${port}/api/v1`);
   console.log(`Health check: http://localhost:${port}/api/v1/health`);
 }

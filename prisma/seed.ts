@@ -9,14 +9,32 @@ const adapter = new PrismaPg({
 
 const prisma = new PrismaClient({ adapter });
 
+/**
+ * Reads an env variable. In production, refuses to fall back to the default
+ * value so we never seed known credentials on a live environment.
+ */
+function requireEnv(name: string, fallback: string): string {
+    const value = process.env[name];
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    if (isProduction && !value) {
+        throw new Error(
+            `❌ ${name} must be explicitly set when NODE_ENV=production. ` +
+            `Refusing to use the default value (${fallback}).`,
+        );
+    }
+
+    return value ?? fallback;
+}
+
 async function main() {
     console.log('🌱 Starting seed...');
 
     // ---------------------------------------------------------
     // 1. Admin user
     // ---------------------------------------------------------
-    const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@example.com';
-    const adminPassword = process.env.ADMIN_PASSWORD ?? 'Admin@123456';
+    const adminEmail = requireEnv('ADMIN_EMAIL', 'admin@example.com');
+    const adminPassword = requireEnv('ADMIN_PASSWORD', 'Admin@123456');
     const adminName = process.env.ADMIN_NAME ?? 'Admin';
 
     const hashedAdminPassword = await bcrypt.hash(adminPassword, 12);
@@ -40,8 +58,14 @@ async function main() {
     // ---------------------------------------------------------
     // 2. Demo customer
     // ---------------------------------------------------------
-    const customerEmail = process.env.DEMO_CUSTOMER_EMAIL ?? 'customer@example.com';
-    const customerPassword = process.env.DEMO_CUSTOMER_PASSWORD ?? 'Customer@123456';
+    const customerEmail = requireEnv(
+        'DEMO_CUSTOMER_EMAIL',
+        'customer@example.com',
+    );
+    const customerPassword = requireEnv(
+        'DEMO_CUSTOMER_PASSWORD',
+        'Customer@123456',
+    );
 
     const hashedCustomerPassword = await bcrypt.hash(customerPassword, 12);
 
@@ -89,7 +113,8 @@ async function main() {
     const productsData = [
         {
             name: 'Wireless Bluetooth Headphones',
-            description: 'Premium noise-cancelling over-ear headphones with 30h battery life.',
+            description:
+                'Premium noise-cancelling over-ear headphones with 30h battery life.',
             price: '199.99',
             stock: 50,
             categoryId: electronics.id,
