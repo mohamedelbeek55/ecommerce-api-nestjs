@@ -24,6 +24,7 @@ import { RegisterDto } from './dto/register.dto';
 import { RefreshJwtGuard } from './guards/refresh-jwt.guard';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 
 
 interface AuthenticatedUser {
@@ -109,12 +110,27 @@ export class AuthController {
     },
   })
   @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Email address is not verified yet',
+    schema: {
+      example: {
+        statusCode: 403,
+        message:
+          'Please verify your email address before logging in. Check your inbox for the verification link, or request a new one.',
+        error: 'Forbidden',
+      },
+    },
+  })
+  @ApiResponse({
     status: HttpStatus.TOO_MANY_REQUESTS,
     description: 'Too many login attempts (5 per minute)',
   })
   login(@Body() dto: LoginDto): Promise<AuthTokensDto> {
     return this.authService.login(dto);
   }
+
+
+
 
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60000 } })
@@ -235,4 +251,31 @@ export class AuthController {
     await this.authService.resetPassword(dto.token, dto.newPassword);
   }
 
+
+
+  @Public()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })  // 👈 3 محاولات بس (أقل من register)
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Resend email verification link',
+    description:
+      'Sends a new verification email if the account exists and is not yet verified. ' +
+      'Always returns 204 to prevent user enumeration.',
+  })
+  @ApiBody({ type: ResendVerificationDto })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description:
+      'Request processed. Check your email if an unverified account exists.',
+  })
+  @ApiResponse({
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    description: 'Too many requests (3 per minute)',
+  })
+  async resendVerification(
+    @Body() dto: ResendVerificationDto,
+  ): Promise<void> {
+    await this.authService.resendVerification(dto.email);
+  }
 }

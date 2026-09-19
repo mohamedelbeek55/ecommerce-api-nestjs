@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  ForbiddenException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -60,8 +61,17 @@ export class AuthService {
       ? await bcrypt.compare(dto.password, user.password)
       : false;
 
+    // 1️⃣ التحقق من الإيميل + الباسورد
     if (!user || !validPassword) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // 2️⃣ التحقق من إن الإيميل متفعل
+    if (!user.isEmailVerified) {
+      throw new ForbiddenException(
+        'Please verify your email address before logging in. ' +
+        'Check your inbox for the verification link, or request a new one.',
+      );
     }
 
     return this.issueTokens(user);
@@ -123,7 +133,39 @@ export class AuthService {
       emailVerificationTokenExpiresAt: null,
     });
   }
+  async resendVerification(email: string): Promise<void> {
+    const user = await this.userRepository.findByEmail(email);
 
+    // ⚠️ نرجّع 204 دايماً - حتى لو الإيميل مش موجود (منع User Enumeration)
+    if (!user) {
+      return;
+    }
+
+    // لو الإيميل متفعل بالفعل → متعملش حاجة (204 برضه)
+    if (user.isEmailVerified) {
+      return;
+    }
+
+    // ولّد توكن جديد + وقت انتهاء جديد (24 ساعة)
+    const newToken = randomBytes(32).toString('hex');
+    const newTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await this.userRepository.updateUserVerificationStatus(user.id, {
+      emailVerificationToken: newToken,
+      emailVerificationTokenExpiresAt: newTokenExpiresAt,
+    });
+
+    try {
+      await this.emailService.sendVerificationEmail(
+        user.email,
+        user.name,
+        newToken,
+      );
+    } catch (error) {
+      console.error('Failed to resend verification email:', error);
+      // مش هنعطّل الـ request - الإيميل ممكن يفشل بس العملية نجحت
+    }
+  }
 
   async forgotPassword(email: string): Promise<void> {
     const user = await this.userRepository.findByEmail(email);
