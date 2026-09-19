@@ -12,6 +12,7 @@ import { IUserRepository } from '../users/domain/user.repository.interface';
 import type { UserEntity } from '../users/domain/user.entity';
 import { EmailService } from '../email/email.service';
 import { AuthService } from './auth.service';
+import { hashToken } from './utils/hash-token.util';
 
 describe('AuthService', () => {
   jest.setTimeout(15000);
@@ -40,7 +41,7 @@ describe('AuthService', () => {
     sendPasswordResetEmail: jest.Mock;
   };
 
-  // ✅ Base mock user — with ALL the new fields
+  // Base mock user — with ALL the new fields
   const user: UserEntity = {
     id: 'user-1',
     email: 'user@example.com',
@@ -48,8 +49,7 @@ describe('AuthService', () => {
     name: 'Test User',
     role: Role.CUSTOMER,
     hashedRefreshToken: null,
-    // 👇 New fields
-    isEmailVerified: true, // ✅ Default to verified so login tests pass
+    isEmailVerified: true,
     emailVerificationToken: null,
     emailVerificationTokenExpiresAt: null,
     passwordResetToken: null,
@@ -104,7 +104,7 @@ describe('AuthService', () => {
         { provide: IUserRepository, useValue: userRepository },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: configService },
-        { provide: EmailService, useValue: emailService }, // 👈 السطر الحيوي
+        { provide: EmailService, useValue: emailService },
       ],
     }).compile();
 
@@ -122,7 +122,6 @@ describe('AuthService', () => {
       const result = await service.register(dto);
 
       expect(userRepository.findByEmail).toHaveBeenCalledWith(dto.email);
-      // 👇 استخدم objectContaining لأن في حقول جديدة بقت بتتبعت
       expect(userRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           email: dto.email,
@@ -136,7 +135,6 @@ describe('AuthService', () => {
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       });
-      // 👇 تأكد إن الإيميل اتبعت
       expect(emailService.sendVerificationEmail).toHaveBeenCalledWith(
         user.email,
         user.name,
@@ -212,7 +210,7 @@ describe('AuthService', () => {
       userRepository.findByEmail.mockResolvedValue({
         ...user,
         password: await bcrypt.hash(password, 4),
-        isEmailVerified: false, // 👈 الحالة الجديدة
+        isEmailVerified: false,
       });
 
       await expect(
@@ -282,7 +280,7 @@ describe('AuthService', () => {
       const refreshToken = 'provided-refresh-token';
       userRepository.findById.mockResolvedValue({
         ...user,
-        hashedRefreshToken: await bcrypt.hash(refreshToken, 4),
+        hashedRefreshToken: hashToken(refreshToken),
       });
 
       await expect(service.refresh(user.id, refreshToken)).resolves.toEqual({
@@ -305,12 +303,41 @@ describe('AuthService', () => {
     it('throws UnauthorizedException when the refresh token does not match', async () => {
       userRepository.findById.mockResolvedValue({
         ...user,
-        hashedRefreshToken: await bcrypt.hash('different-token', 4),
+        hashedRefreshToken: hashToken('different-token'),
       });
 
       await expect(
         service.refresh(user.id, 'provided-refresh-token'),
       ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    // 🎯 Proof that the bcrypt/72-byte vulnerability is fixed
+    it('rejects a token that shares the first 72 bytes with the stored one', async () => {
+      // Two DIFFERENT tokens with the SAME first 72 bytes.
+      // With bcrypt, both would have produced the same hash — a critical bug.
+      const sharedPrefix = 'A'.repeat(72);
+      const oldToken = `${sharedPrefix}-old-token-suffix`;
+      const newToken = `${sharedPrefix}-new-token-suffix`;
+
+      // Sanity check: SHA-256 produces different hashes for these tokens
+      expect(hashToken(oldToken)).not.toBe(hashToken(newToken));
+
+      // The DB holds the hash of the NEW token
+      userRepository.findById.mockResolvedValue({
+        ...user,
+        hashedRefreshToken: hashToken(newToken),
+      });
+
+      // The OLD token must NOT be accepted (this is what failed with bcrypt)
+      await expect(service.refresh(user.id, oldToken)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+
+      // The NEW token must be accepted
+      await expect(service.refresh(user.id, newToken)).resolves.toEqual({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      });
     });
   });
 
@@ -391,7 +418,7 @@ describe('AuthService', () => {
       );
     });
 
-    it('stores a bcrypt hash of the newly issued refresh token', async () => {
+    it('stores a SHA-256 hash of the newly issued refresh token', async () => {
       userRepository.findByEmail.mockResolvedValue({
         ...user,
         password: await bcrypt.hash('password', 4),
@@ -406,10 +433,12 @@ describe('AuthService', () => {
       );
       const [, storedHash] =
         userRepository.updateRefreshTokenHash.mock.calls[0];
-      expect(storedHash).not.toBe('refresh-token');
-      await expect(bcrypt.compare('refresh-token', storedHash)).resolves.toBe(
-        true,
-      );
+
+      // SHA-256 hex digest is 64 characters
+      expect(storedHash).toHaveLength(64);
+
+      // It must match the SHA-256 hash of the issued refresh token
+      expect(storedHash).toBe(hashToken('refresh-token'));
     });
   });
 });
