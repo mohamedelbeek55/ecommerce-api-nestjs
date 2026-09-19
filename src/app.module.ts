@@ -27,7 +27,10 @@ import { EmailModule } from './email/email.module';
     ConfigModule.forRoot({
       isGlobal: true,
       validate,
-      envFilePath: '.env',
+      envFilePath:
+        process.env.NODE_ENV === 'test'
+          ? ['.env.test', '.env']
+          : '.env',
     }),
     ThrottlerModule.forRoot([
       {
