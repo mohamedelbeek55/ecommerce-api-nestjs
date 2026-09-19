@@ -25,7 +25,7 @@ import { RefreshJwtGuard } from './guards/refresh-jwt.guard';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
-
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 interface AuthenticatedUser {
   userId: string;
@@ -185,18 +185,11 @@ export class AuthController {
     summary: 'Verify email address',
     description: 'Verifies a user\'s email address using the token sent via email.',
   })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        token: { type: 'string', example: 'a1b2c3d4e5f6...' },
-      },
-    },
-  })
+  @ApiBody({ type: VerifyEmailDto })
   @ApiResponse({ status: HttpStatus.NO_CONTENT, description: 'Email verified successfully' })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid or expired token' })
-  async verifyEmail(@Body('token') token: string): Promise<void> {
-    await this.authService.verifyEmail(token);
+  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<void> {
+    await this.authService.verifyEmail(dto.token);
   }
 
 
@@ -254,7 +247,7 @@ export class AuthController {
 
 
   @Public()
-  @Throttle({ default: { limit: 3, ttl: 60000 } })  // 👈 3 محاولات بس (أقل من register)
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Post('resend-verification')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({

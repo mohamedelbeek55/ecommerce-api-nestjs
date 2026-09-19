@@ -15,7 +15,6 @@ export async function createE2eApp(stripeClient?: object): Promise<{
   const moduleBuilder = Test.createTestingModule({
     imports: [AppModule],
   })
-    // 👇 ده السطر اللي كان ناقص — بيستبدل الـ EmailService الحقيقي بـ Mock
     .overrideProvider(EmailService)
     .useClass(MockEmailService);
 

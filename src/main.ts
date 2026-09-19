@@ -8,6 +8,7 @@ import type { Env } from './config/env.validation';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.enableShutdownHooks();
   app.use(helmet());
 
   // Typed access to validated env vars

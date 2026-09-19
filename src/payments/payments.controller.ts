@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Headers,
+  HttpCode,
   HttpStatus,
   Param,
   Post,
@@ -21,7 +22,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { CreatePaymentIntentResponseDto } from './dto/create-payment-intent-response.dto';
 import { WebhookResponseDto } from './dto/webhook-response.dto';
 import { PaymentsService } from './payments.service';
-
+import { SkipThrottle } from '@nestjs/throttler';
 interface AuthenticatedUser {
   userId: string;
 }
@@ -96,7 +97,9 @@ export class PaymentsController {
   }
 
   @Public()
+  @SkipThrottle()
   @Post('webhook')
+  @HttpCode(HttpStatus.OK)
   @ApiExcludeEndpoint()
   handleWebhook(
     @Req() request: RawBodyRequest,

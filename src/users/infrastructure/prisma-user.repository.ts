@@ -55,7 +55,6 @@ export class PrismaUserRepository implements IUserRepository {
     });
   }
 
-  // 👇 الطرق الجديدة لـ Forgot Password
 
   async findByPasswordResetToken(token: string): Promise<UserEntity | null> {
     return this.prisma.user.findUnique({
@@ -81,9 +80,7 @@ export class PrismaUserRepository implements IUserRepository {
       where: { id: userId },
       data: {
         password: hashedPassword,
-        // لما نغير الباسورد، نعمل logout من كل الأجهزة
         hashedRefreshToken: null,
-        // ونمسح التوكنات
         passwordResetToken: null,
         passwordResetTokenExpiresAt: null,
       },

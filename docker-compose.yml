@@ -12,7 +12,7 @@ services:
     volumes:
       - ecommerce-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ecommerce_db"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d ecommerce_db" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -22,15 +22,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql://postgres:devpassword123@postgres:5432/ecommerce_db?schema=public
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN}
-      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
-      PORT: 3000
+      # Override DATABASE_URL to use the Docker service hostname ("postgres" not "localhost")
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/ecommerce_db?schema=public
       NODE_ENV: production
     command: sh -c "npx prisma migrate deploy && node dist/main.js"
     ports:
