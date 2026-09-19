@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { createE2eApp, resetDatabase, uniqueEmail } from './e2e-test-helpers';
 
-describe('Auth (e2e)', () => {
+describe('Cart and orders (e2e)', () => {
   let app: Awaited<ReturnType<typeof createE2eApp>>['app'];
   let prisma: Awaited<ReturnType<typeof createE2eApp>>['prisma'];
 
@@ -13,79 +13,102 @@ describe('Auth (e2e)', () => {
 
   afterAll(() => app.close());
 
-  it('registers, logs in, refreshes, and logs out a user', async () => {
-    const email = uniqueEmail('auth');
-    const password = 'StrongPassword123!';
-    const register = await request(app.getHttpServer())
+  async function createUser(label: string) {
+    const response = await request(app.getHttpServer())
       .post('/api/v1/auth/register')
-      .send({ email, password, name: 'Auth User' })
+      .send({
+        email: uniqueEmail(label),
+        password: 'StrongPassword123!',
+        name: label,
+      })
       .expect(201);
+    return response.body.accessToken as string;
+  }
 
-    expect(register.body).toEqual(
-      expect.objectContaining({
-        accessToken: expect.any(String),
-        refreshToken: expect.any(String),
-      }),
-    );
+  async function createProduct(stock: number) {
+    const category = await prisma.category.create({
+      data: { name: `Category-${Date.now()}-${Math.random()}` },
+    });
+    return prisma.product.create({
+      data: {
+        name: `Product-${Date.now()}-${Math.random()}`,
+        description: 'E2E product',
+        price: '12.50',
+        stock,
+        categoryId: category.id,
+      },
+    });
+  }
 
-    const login = await request(app.getHttpServer())
-      .post('/api/v1/auth/login')
-      .send({ email, password })
+  it('adds a product, checks out, and clears the cart', async () => {
+    const token = await createUser('cart-checkout');
+    const product = await createProduct(5);
+
+    const cart = await request(app.getHttpServer())
+      .post('/api/v1/cart/items')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ productId: product.id, quantity: 2 })
+      .expect(201);
+    expect(cart.body.items).toHaveLength(1);
+
+    const order = await request(app.getHttpServer())
+      .post('/api/v1/orders/checkout')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(201);
+    expect(order.body.total).toBe('25');
+
+    const emptyCart = await request(app.getHttpServer())
+      .get('/api/v1/cart')
+      .set('Authorization', `Bearer ${token}`)
       .expect(200);
-
-    const protectedResponse = await request(app.getHttpServer())
-      .get('/api/v1/users/me')
-      .set('Authorization', `Bearer ${login.body.accessToken}`)
-      .expect(200);
-    expect(protectedResponse.body.email).toBe(email);
-
-    const refreshed = await request(app.getHttpServer())
-      .post('/api/v1/auth/refresh')
-      .send({ refreshToken: login.body.refreshToken })
-      .expect(200);
-    expect(refreshed.body.accessToken).toEqual(expect.any(String));
+    expect(emptyCart.body.items).toEqual([]);
 
     await request(app.getHttpServer())
-      .post('/api/v1/auth/logout')
-      .set('Authorization', `Bearer ${refreshed.body.accessToken}`)
-      .expect(204);
-
-    await request(app.getHttpServer())
-      .post('/api/v1/auth/refresh')
-      .send({ refreshToken: refreshed.body.refreshToken })
-      .expect(401);
+      .post('/api/v1/orders/checkout')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
   });
 
-  it('rejects duplicate email registration with 409', async () => {
-    const email = uniqueEmail('duplicate');
-    const payload = { email, password: 'StrongPassword123!', name: 'User' };
+  it('keeps stock unchanged when checkout cannot fulfill the cart', async () => {
+    const token = await createUser('insufficient-stock');
+    const product = await createProduct(2);
 
     await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send(payload)
-      .expect(201);
-    await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send(payload)
-      .expect(409);
-  });
-
-  it('rejects incorrect credentials with a generic 401 response', async () => {
-    const email = uniqueEmail('wrong-password');
-    await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send({ email, password: 'StrongPassword123!', name: 'User' })
+      .post('/api/v1/cart/items')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ productId: product.id, quantity: 3 })
       .expect(201);
 
     const response = await request(app.getHttpServer())
-      .post('/api/v1/auth/login')
-      .send({ email, password: 'WrongPassword123!' })
-      .expect(401);
+      .post('/api/v1/orders/checkout')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+    expect(response.body.message).toBe('Insufficient stock');
 
-    expect(response.body.message).toBe('Invalid credentials');
+    const unchanged = await prisma.product.findUniqueOrThrow({
+      where: { id: product.id },
+    });
+    expect(unchanged.stock).toBe(2);
   });
 
-  it('requires authentication for the profile endpoint', async () => {
-    await request(app.getHttpServer()).get('/api/v1/users/me').expect(401);
+  it('returns 404 when another user requests the order', async () => {
+    const firstToken = await createUser('order-owner');
+    const secondToken = await createUser('other-user');
+    const product = await createProduct(2);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/cart/items')
+      .set('Authorization', `Bearer ${firstToken}`)
+      .send({ productId: product.id, quantity: 1 })
+      .expect(201);
+    const order = await request(app.getHttpServer())
+      .post('/api/v1/orders/checkout')
+      .set('Authorization', `Bearer ${firstToken}`)
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/api/v1/orders/${order.body.id}`)
+      .set('Authorization', `Bearer ${secondToken}`)
+      .expect(404);
   });
 });

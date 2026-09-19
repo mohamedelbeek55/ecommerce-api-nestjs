@@ -74,7 +74,7 @@ async function main() {
 
   const jest = spawnSync(
     process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['jest', '--config', './test/jest-e2e.json', ...process.argv.slice(2)],
+    ['jest', '--config', './test/jest-e2e.json', '--runInBand', '--forceExit', ...process.argv.slice(2)],
     { env: environment, stdio: 'inherit', shell: process.platform === 'win32' },
   );
 

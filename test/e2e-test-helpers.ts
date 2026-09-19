@@ -4,7 +4,9 @@ import type { INestApplication } from '@nestjs/common';
 import type { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/database/prisma.service';
+import { EmailService } from '../src/email/email.service';
 import { STRIPE_CLIENT } from '../src/payments/payments.service';
+import { MockEmailService } from './mock-email-service';
 
 export async function createE2eApp(stripeClient?: object): Promise<{
   app: INestApplication<App>;
@@ -12,10 +14,15 @@ export async function createE2eApp(stripeClient?: object): Promise<{
 }> {
   const moduleBuilder = Test.createTestingModule({
     imports: [AppModule],
-  });
+  })
+    // 👇 ده السطر اللي كان ناقص — بيستبدل الـ EmailService الحقيقي بـ Mock
+    .overrideProvider(EmailService)
+    .useClass(MockEmailService);
+
   if (stripeClient) {
     moduleBuilder.overrideProvider(STRIPE_CLIENT).useValue(stripeClient);
   }
+
   const moduleFixture: TestingModule = await moduleBuilder.compile();
   const app = moduleFixture.createNestApplication({ rawBody: true });
 
