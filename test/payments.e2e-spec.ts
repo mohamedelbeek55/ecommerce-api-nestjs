@@ -37,7 +37,7 @@ describe('Payments (e2e)', () => {
         password: 'StrongPassword123!',
         name: 'Payment User',
       })
-      .expect(201);
+      .expect(201);  // 👈 201 مش 200
 
     const category = await prisma.category.create({
       data: { name: `Payment-${Date.now()}` },
@@ -56,22 +56,23 @@ describe('Payments (e2e)', () => {
       .post('/api/v1/cart/items')
       .set('Authorization', `Bearer ${user.body.accessToken}`)
       .send({ productId: product.id, quantity: 1 })
-      .expect(201);
+      .expect(201);  // 👈 201 مش 200
+
     const order = await request(app.getHttpServer())
       .post('/api/v1/orders/checkout')
       .set('Authorization', `Bearer ${user.body.accessToken}`)
-      .expect(201);
+      .expect(201);  // 👈 201 مش 200
 
     const intent = await request(app.getHttpServer())
       .post(`/api/v1/payments/orders/${order.body.id}/intent`)
       .set('Authorization', `Bearer ${user.body.accessToken}`)
-      .expect(201);
+      .expect(201);  // 👈 201 مش 200
     expect(intent.body).toEqual({ clientSecret: 'cs_test_e2e' });
 
     const repeatedIntent = await request(app.getHttpServer())
       .post(`/api/v1/payments/orders/${order.body.id}/intent`)
       .set('Authorization', `Bearer ${user.body.accessToken}`)
-      .expect(201);
+      .expect(201);  // ✅ ده صح أصلاً
     expect(repeatedIntent.body).toEqual({ clientSecret: 'cs_test_e2e' });
     expect(stripe.paymentIntents.create).toHaveBeenCalledTimes(1);
 
@@ -104,18 +105,19 @@ describe('Payments (e2e)', () => {
       .set('Content-Type', 'application/json')
       .set('stripe-signature', signature)
       .send(payload);
-    expect(webhookResponse.status).toBe(201);
+    expect(webhookResponse.status).toBe(200);  // ✅ ده صح
 
     await expect(
       prisma.order.findUniqueOrThrow({ where: { id: order.body.id } }),
     ).resolves.toMatchObject({ status: 'CONFIRMED' });
 
+    // 👇 Webhook تاني (duplicate event) — المفروض يرجّع 200
     await request(app.getHttpServer())
       .post('/api/v1/payments/webhook')
       .set('Content-Type', 'application/json')
       .set('stripe-signature', signature)
       .send(payload)
-      .expect(201);
+      .expect(200);  // 👈 200 مش 201
 
     await expect(
       prisma.order.findUniqueOrThrow({ where: { id: order.body.id } }),
@@ -146,7 +148,8 @@ describe('Payments (e2e)', () => {
         password: 'StrongPassword123!',
         name: 'Concurrent Payment User',
       })
-      .expect(201);
+      .expect(201);  // ✅ صح
+
     const category = await prisma.category.create({
       data: { name: `Concurrent-payment-${Date.now()}` },
     });
@@ -164,11 +167,12 @@ describe('Payments (e2e)', () => {
       .post('/api/v1/cart/items')
       .set('Authorization', `Bearer ${user.body.accessToken}`)
       .send({ productId: product.id, quantity: 1 })
-      .expect(201);
+      .expect(201);  // 👈 201 مش 200
+
     const order = await request(app.getHttpServer())
       .post('/api/v1/orders/checkout')
       .set('Authorization', `Bearer ${user.body.accessToken}`)
-      .expect(201);
+      .expect(201);  // 👈 201 مش 200
 
     const results = await Promise.all([
       request(app.getHttpServer())
@@ -179,7 +183,8 @@ describe('Payments (e2e)', () => {
         .set('Authorization', `Bearer ${user.body.accessToken}`),
     ]);
 
-    expect(results.map((result) => result.status)).toEqual([201, 201]);
+    expect(results.map((result) => result.status)).toEqual([201, 201]);  // ✅ صح
+
     const createCalls = (stripe.paymentIntents.create as jest.Mock).mock
       .calls;
     const concurrentCalls = createCalls.filter(
