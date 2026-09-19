@@ -17,14 +17,15 @@ describe('Payments (e2e)', () => {
     stripe.paymentIntents.create = jest.fn().mockResolvedValue({
       id: 'pi_test_e2e',
       client_secret: 'cs_test_e2e',
+      status: 'requires_payment_method',  // 👈 جديد
     });
     stripe.paymentIntents.retrieve = jest.fn().mockResolvedValue({
       id: 'pi_test_e2e',
       client_secret: 'cs_test_e2e',
+      status: 'requires_payment_method',  // 👈 جديد
     });
     ({ app, prisma } = await createE2eApp(stripe));
   });
-
   beforeEach(() => resetDatabase(prisma));
 
   afterAll(() => app.close());
