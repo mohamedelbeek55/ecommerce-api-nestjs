@@ -1,4 +1,8 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -6,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
 import { IUserRepository } from '../users/domain/user.repository.interface';
 import type { UserEntity } from '../users/domain/user.entity';
+import { EmailService } from '../email/email.service';
 import { AuthService } from './auth.service';
 
 describe('AuthService', () => {
@@ -16,7 +21,13 @@ describe('AuthService', () => {
     findByEmail: jest.Mock;
     findById: jest.Mock;
     create: jest.Mock;
+    update: jest.Mock;
     updateRefreshTokenHash: jest.Mock;
+    findByVerificationToken: jest.Mock;
+    updateUserVerificationStatus: jest.Mock;
+    findByPasswordResetToken: jest.Mock;
+    updatePasswordReset: jest.Mock;
+    updatePassword: jest.Mock;
   };
   let jwtService: {
     signAsync: jest.Mock;
@@ -24,7 +35,12 @@ describe('AuthService', () => {
   let configService: {
     get: jest.Mock;
   };
+  let emailService: {
+    sendVerificationEmail: jest.Mock;
+    sendPasswordResetEmail: jest.Mock;
+  };
 
+  // ✅ Base mock user — with ALL the new fields
   const user: UserEntity = {
     id: 'user-1',
     email: 'user@example.com',
@@ -32,6 +48,12 @@ describe('AuthService', () => {
     name: 'Test User',
     role: Role.CUSTOMER,
     hashedRefreshToken: null,
+    // 👇 New fields
+    isEmailVerified: true, // ✅ Default to verified so login tests pass
+    emailVerificationToken: null,
+    emailVerificationTokenExpiresAt: null,
+    passwordResetToken: null,
+    passwordResetTokenExpiresAt: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   };
@@ -43,14 +65,22 @@ describe('AuthService', () => {
       findByEmail: jest.fn().mockResolvedValue(null),
       findById: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue(user),
+      update: jest.fn(),
       updateRefreshTokenHash: jest.fn().mockResolvedValue(undefined),
+      findByVerificationToken: jest.fn().mockResolvedValue(null),
+      updateUserVerificationStatus: jest.fn().mockResolvedValue(undefined),
+      findByPasswordResetToken: jest.fn().mockResolvedValue(null),
+      updatePasswordReset: jest.fn().mockResolvedValue(undefined),
+      updatePassword: jest.fn().mockResolvedValue(undefined),
     };
+
     jwtService = {
       signAsync: jest
         .fn()
         .mockResolvedValueOnce('access-token')
         .mockResolvedValueOnce('refresh-token'),
     };
+
     configService = {
       get: jest.fn((key: string) => {
         const values: Record<string, string> = {
@@ -63,12 +93,18 @@ describe('AuthService', () => {
       }),
     };
 
+    emailService = {
+      sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
+      sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: IUserRepository, useValue: userRepository },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: configService },
+        { provide: EmailService, useValue: emailService }, // 👈 السطر الحيوي
       ],
     }).compile();
 
@@ -76,7 +112,7 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
-    it('creates a user and returns access and refresh tokens', async () => {
+    it('creates a user, sends verification email, and returns tokens', async () => {
       const dto = {
         email: 'new@example.com',
         password: 'plain-password',
@@ -86,15 +122,26 @@ describe('AuthService', () => {
       const result = await service.register(dto);
 
       expect(userRepository.findByEmail).toHaveBeenCalledWith(dto.email);
-      expect(userRepository.create).toHaveBeenCalledWith({
-        email: dto.email,
-        password: expect.any(String),
-        name: dto.name,
-      });
+      // 👇 استخدم objectContaining لأن في حقول جديدة بقت بتتبعت
+      expect(userRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: dto.email,
+          password: expect.any(String),
+          name: dto.name,
+          emailVerificationToken: expect.any(String),
+          emailVerificationTokenExpiresAt: expect.any(Date),
+        }),
+      );
       expect(result).toEqual({
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       });
+      // 👇 تأكد إن الإيميل اتبعت
+      expect(emailService.sendVerificationEmail).toHaveBeenCalledWith(
+        user.email,
+        user.name,
+        expect.any(String),
+      );
     });
 
     it('throws ConflictException when the email is already registered', async () => {
@@ -124,14 +171,32 @@ describe('AuthService', () => {
       expect(hashedPassword).not.toBe(password);
       await expect(bcrypt.compare(password, hashedPassword)).resolves.toBe(true);
     });
+
+    it('still succeeds when sending the verification email fails', async () => {
+      emailService.sendVerificationEmail.mockRejectedValueOnce(
+        new Error('SMTP down'),
+      );
+
+      await expect(
+        service.register({
+          email: 'new@example.com',
+          password: 'plain-password',
+          name: 'New User',
+        }),
+      ).resolves.toEqual({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      });
+    });
   });
 
   describe('login', () => {
-    it('returns tokens when the password matches', async () => {
+    it('returns tokens when the password matches and the email is verified', async () => {
       const password = 'correct-password';
       userRepository.findByEmail.mockResolvedValue({
         ...user,
         password: await bcrypt.hash(password, 4),
+        isEmailVerified: true,
       });
 
       await expect(
@@ -140,6 +205,19 @@ describe('AuthService', () => {
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       });
+    });
+
+    it('throws ForbiddenException when the email is not verified', async () => {
+      const password = 'correct-password';
+      userRepository.findByEmail.mockResolvedValue({
+        ...user,
+        password: await bcrypt.hash(password, 4),
+        isEmailVerified: false, // 👈 الحالة الجديدة
+      });
+
+      await expect(
+        service.login({ email: user.email, password }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('throws UnauthorizedException when the user does not exist', async () => {
@@ -155,6 +233,7 @@ describe('AuthService', () => {
       userRepository.findByEmail.mockResolvedValue({
         ...user,
         password: await bcrypt.hash('correct-password', 4),
+        isEmailVerified: true,
       });
 
       await expect(
@@ -176,6 +255,7 @@ describe('AuthService', () => {
       userRepository.findByEmail.mockResolvedValue({
         ...user,
         password: await bcrypt.hash('correct-password', 4),
+        isEmailVerified: true,
       });
       let wrongPasswordError: UnauthorizedException | undefined;
       try {
@@ -245,11 +325,56 @@ describe('AuthService', () => {
     });
   });
 
+  describe('verifyEmail', () => {
+    it('marks the user as verified and clears the token', async () => {
+      const token = 'valid-token';
+      userRepository.findByVerificationToken.mockResolvedValue({
+        ...user,
+        isEmailVerified: false,
+        emailVerificationToken: token,
+        emailVerificationTokenExpiresAt: new Date(Date.now() + 60_000),
+      });
+
+      await service.verifyEmail(token);
+
+      expect(userRepository.updateUserVerificationStatus).toHaveBeenCalledWith(
+        user.id,
+        {
+          isEmailVerified: true,
+          emailVerificationToken: null,
+          emailVerificationTokenExpiresAt: null,
+        },
+      );
+    });
+
+    it('throws BadRequestException for an invalid token', async () => {
+      userRepository.findByVerificationToken.mockResolvedValue(null);
+
+      await expect(service.verifyEmail('bad-token')).rejects.toThrow(
+        'Invalid verification token',
+      );
+    });
+
+    it('throws BadRequestException for an expired token', async () => {
+      userRepository.findByVerificationToken.mockResolvedValue({
+        ...user,
+        isEmailVerified: false,
+        emailVerificationToken: 'expired-token',
+        emailVerificationTokenExpiresAt: new Date(Date.now() - 60_000),
+      });
+
+      await expect(service.verifyEmail('expired-token')).rejects.toThrow(
+        'Verification token has expired',
+      );
+    });
+  });
+
   describe('issueTokens', () => {
     it('signs both payloads with the configured secrets and expiries', async () => {
       userRepository.findByEmail.mockResolvedValue({
         ...user,
         password: await bcrypt.hash('password', 4),
+        isEmailVerified: true,
       });
       await service.login({ email: user.email, password: 'password' });
 
@@ -270,6 +395,7 @@ describe('AuthService', () => {
       userRepository.findByEmail.mockResolvedValue({
         ...user,
         password: await bcrypt.hash('password', 4),
+        isEmailVerified: true,
       });
 
       await service.login({ email: user.email, password: 'password' });
