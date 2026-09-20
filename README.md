@@ -6,9 +6,26 @@
 ![Prisma](https://img.shields.io/badge/Prisma-7-2D3748)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-> A production-style REST API for an e-commerce platform, built with **NestJS**, **PostgreSQL**, and **Prisma**, following **Clean Architecture** principles.
+> A production-grade REST API for an e-commerce platform, built with **NestJS**, **PostgreSQL**, and **Prisma**, following **Clean Architecture** principles. Deployed on **Railway** + **Neon**.
 
-**[📚 API Documentation (Swagger)](http://localhost:3000/api/docs)** (available when running locally) · **[🐛 Report Bug](https://github.com/mohamedelbeek55/ecommerce-api-nestjs/issues)** · **[✨ Request Feature](https://github.com/mohamedelbeek55/ecommerce-api-nestjs/issues)**
+## 🎮 Try It Live
+
+**Live Swagger UI:** [https://ecommerce-api-nestjs-production-f953.up.railway.app/api/docs](https://ecommerce-api-nestjs-production-f953.up.railway.app/api/docs)
+
+**Test Credentials:**
+
+| Role | Email | Password |
+|------|-------|----------|
+| 👑 Admin | `admin@demo.local` | `Admin@123456` |
+| 👤 Customer | `customer@demo.com` | `Customer@123456` |
+
+
+> 💡 Click **"Authorize"** in Swagger, login with the credentials above, and try the endpoints directly.
+
+> 🎥 **Quick Start:** 1) Login → 2) Copy `accessToken` → 3) Click **Authorize** → 4) Paste token → 5) Try any endpoint
+
+
+**[🐛 Report Bug](https://github.com/mohamedelbeek55/ecommerce-api-nestjs/issues)** · **[✨ Request Feature](https://github.com/mohamedelbeek55/ecommerce-api-nestjs/issues)**
 
 ---
 
@@ -85,6 +102,7 @@
 - **Swagger / OpenAPI 3** documentation for the endpoints
 - **Multi-stage Docker build** with a non-root runtime user
 - **Environment validation** with Zod (fails fast on startup)
+- **Live deployment** on Railway with auto-migrations on startup
 
 ---
 
@@ -262,9 +280,9 @@ Copy `.env.example` to `.env` and fill in the values:
 
 Interactive Swagger UI is available at:
 
-```text
-http://localhost:3000/api/docs
-```
+- **Production:** [https://ecommerce-api-nestjs-production-f953.up.railway.app/api/docs](https://ecommerce-api-nestjs-production-f953.up.railway.app/api/docs)
+- **Local:** http://localhost:3000/api/docs
+
 
 Swagger documents each endpoint with:
 
@@ -332,6 +350,21 @@ npm run test:cov
 | Concurrency | E2E | Checkout race conditions, PaymentIntent creation |
 
 ---
+
+## Deployment
+
+The API is deployed on **Railway** (backend) with **Neon** (PostgreSQL).
+
+| Component | Provider | Notes |
+|-----------|----------|-------|
+| Backend | [Railway](https://railway.app) | Docker container, free tier |
+| Database | [Neon](https://neon.tech) | Serverless PostgreSQL |
+| CI/CD | GitHub Actions | Auto-deploy on push to `main` |
+
+**Production URL:** [https://ecommerce-api-nestjs-production-f953.up.railway.app](https://ecommerce-api-nestjs-production-f953.up.railway.app)
+
+Migrations run automatically at container startup (`prisma migrate deploy`).
+
 
 ## Project Structure
 
