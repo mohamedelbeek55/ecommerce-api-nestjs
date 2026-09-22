@@ -11,22 +11,23 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   app.use(helmet());
+  const config = app.get(ConfigService<Env, true>);
+  const port = config.get('PORT', { infer: true });
 
-  // CORS: allow the deployed frontend + localhost during development
+
+  // CORS: read allowed origins from env (comma-separated)
+  const corsOrigins = config
+    .get('CORS_ORIGINS', { infer: true })
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:5173', // Vite
-      'http://localhost:3001', // alt
-      // Add your deployed frontend URL here, e.g.:
-      // 'https://your-frontend.vercel.app',
-    ],
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
-  const config = app.get(ConfigService<Env, true>);
-  const port = config.get('PORT', { infer: true });
 
   // Trust proxy header only when explicitly enabled (e.g. behind Render/nginx).
   // Enabling it on a directly-exposed server lets clients spoof X-Forwarded-For

@@ -73,6 +73,13 @@ export const envSchema = z.object({
   FRONTEND_URL: z
     .string({ error: 'FRONTEND_URL is required' })
     .url('FRONTEND_URL must be a valid URL'),
+
+  CORS_ORIGINS: z
+    .string()
+    .optional()
+    .default(
+      'http://localhost:3000,http://localhost:4200,http://localhost:5173',
+    ),
 });
 
 export type Env = z.infer<typeof envSchema>;
