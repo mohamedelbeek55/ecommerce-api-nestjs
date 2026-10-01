@@ -28,19 +28,23 @@ enum OrderStatus {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  password  String   // stored as bcrypt hash — never plaintext
+  password  String?
   name      String
+  googleId  String?  @unique
   role      Role     @default(CUSTOMER)
+
   hashedRefreshToken String?
 
-  isEmailVerified Boolean   @default(false)
-  emailVerificationToken String?   @unique
+  isEmailVerified                Boolean   @default(false)
+  emailVerificationToken         String?   @unique
   emailVerificationTokenExpiresAt DateTime?
 
-passwordResetToken String?   @unique
-passwordResetTokenExpiresAt DateTime?
+  passwordResetToken         String?   @unique
+  passwordResetTokenExpiresAt DateTime?
+
   cart      Cart?
   orders    Order[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -149,3 +153,5 @@ model OrderItem {
   @@index([orderId])
   @@map("order_items")
 }
+
+

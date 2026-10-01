@@ -2,11 +2,27 @@ import type { CreateUserDto, UserEntity } from './user.entity';
 
 export abstract class IUserRepository {
   abstract findByEmail(email: string): Promise<UserEntity | null>;
+
   abstract findById(id: string): Promise<UserEntity | null>;
+
+  abstract findByGoogleId(googleId: string): Promise<UserEntity | null>;
+
   abstract create(data: CreateUserDto): Promise<UserEntity>;
-  abstract update(id: string, data: { name?: string }): Promise<UserEntity>;
-  abstract updateRefreshTokenHash(id: string, hash: string | null): Promise<void>;
-  abstract findByVerificationToken(token: string): Promise<UserEntity | null>;
+
+  abstract update(
+    id: string,
+    data: { name?: string; googleId?: string },
+  ): Promise<UserEntity>;
+
+  abstract updateRefreshTokenHash(
+    id: string,
+    hash: string | null,
+  ): Promise<void>;
+
+  abstract findByVerificationToken(
+    token: string,
+  ): Promise<UserEntity | null>;
+
   abstract updateUserVerificationStatus(
     userId: string,
     data: {
@@ -16,7 +32,10 @@ export abstract class IUserRepository {
     },
   ): Promise<void>;
 
-  abstract findByPasswordResetToken(token: string): Promise<UserEntity | null>;
+  abstract findByPasswordResetToken(
+    token: string,
+  ): Promise<UserEntity | null>;
+
   abstract updatePasswordReset(
     userId: string,
     data: {
@@ -24,5 +43,9 @@ export abstract class IUserRepository {
       passwordResetTokenExpiresAt: Date | null;
     },
   ): Promise<void>;
-  abstract updatePassword(userId: string, hashedPassword: string): Promise<void>;
+
+  abstract updatePassword(
+    userId: string,
+    hashedPassword: string,
+  ): Promise<void>;
 }

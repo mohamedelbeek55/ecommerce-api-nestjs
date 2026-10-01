@@ -18,17 +18,23 @@ import type { RegisterDto } from './dto/register.dto';
 import { AuthTokensDto } from './dto/auth-response.dto';
 import { EmailService } from '../email/email.service';
 import { hashToken, compareTokenWithHash } from './utils/hash-token.util';
+import { OAuth2Client } from 'google-auth-library';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly googleClient: OAuth2Client;
 
   constructor(
     private readonly userRepository: IUserRepository,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService<Env, true>,
     private readonly emailService: EmailService,
-  ) { }
+  ) {
+    this.googleClient = new OAuth2Client(
+      this.config.get('GOOGLE_CLIENT_ID', { infer: true }),
+    );
+  }
 
   async register(dto: RegisterDto): Promise<AuthTokensDto> {
     const existingUser = await this.userRepository.findByEmail(dto.email);
@@ -64,7 +70,7 @@ export class AuthService {
 
   async login(dto: LoginDto): Promise<AuthTokensDto> {
     const user = await this.userRepository.findByEmail(dto.email);
-    const validPassword = user
+    const validPassword = user?.password
       ? await bcrypt.compare(dto.password, user.password)
       : false;
 
@@ -222,5 +228,87 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await this.userRepository.updatePassword(user.id, hashedPassword);
+  }
+  async loginWithGoogle(idToken: string): Promise<AuthTokensDto> {
+    const clientId = this.config.get('GOOGLE_CLIENT_ID', {
+      infer: true,
+    });
+
+    let ticket;
+
+    try {
+      ticket = await this.googleClient.verifyIdToken({
+        idToken,
+        audience: clientId,
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid Google ID token');
+    }
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      throw new UnauthorizedException('Invalid Google ID token');
+    }
+
+    const googleId = payload.sub;
+    const email = payload.email;
+    const name = payload.name;
+
+    if (!googleId || !email || !name) {
+      throw new UnauthorizedException(
+        'Google account information is incomplete',
+      );
+    }
+
+    if (payload.email_verified !== true) {
+      throw new UnauthorizedException(
+        'Google email address is not verified',
+      );
+    }
+
+    // Existing Google account
+    const existingGoogleUser =
+      await this.userRepository.findByGoogleId(googleId);
+
+    if (existingGoogleUser) {
+      return this.issueTokens(existingGoogleUser);
+    }
+
+    // Existing email/password account
+    const existingEmailUser =
+      await this.userRepository.findByEmail(email);
+
+    if (existingEmailUser) {
+      const linkedUser = await this.userRepository.update(
+        existingEmailUser.id,
+        { googleId },
+      );
+
+      await this.userRepository.updateUserVerificationStatus(
+        linkedUser.id,
+        {
+          isEmailVerified: true,
+          emailVerificationToken: null,
+          emailVerificationTokenExpiresAt: null,
+        },
+      );
+
+      return this.issueTokens({
+        ...linkedUser,
+        isEmailVerified: true,
+      });
+    }
+
+    // New Google account
+    const newUser = await this.userRepository.create({
+      email,
+      name,
+      googleId,
+      password: undefined,
+      isEmailVerified: true,
+    });
+
+    return this.issueTokens(newUser);
   }
 }

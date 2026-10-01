@@ -23,6 +23,10 @@ export const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().optional().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().optional().default('7d'),
 
+  GOOGLE_CLIENT_ID: z
+    .string({ error: 'GOOGLE_CLIENT_ID is required' })
+    .min(1, 'GOOGLE_CLIENT_ID is required'),
+
   // Stripe
   STRIPE_SECRET_KEY: z
     .string({ error: 'STRIPE_SECRET_KEY is required' })

@@ -8,36 +8,63 @@ export class PrismaUserRepository implements IUserRepository {
   constructor(private readonly prisma: PrismaService) { }
 
   findByEmail(email: string): Promise<UserEntity | null> {
-    return this.prisma.user.findUnique({ where: { email } });
+    return this.prisma.user.findUnique({
+      where: { email },
+    });
   }
 
   findById(id: string): Promise<UserEntity | null> {
-    return this.prisma.user.findUnique({ where: { id } });
+    return this.prisma.user.findUnique({
+      where: { id },
+    });
+  }
+
+  findByGoogleId(googleId: string): Promise<UserEntity | null> {
+    return this.prisma.user.findUnique({
+      where: { googleId },
+    });
   }
 
   create(data: CreateUserDto): Promise<UserEntity> {
-    return this.prisma.user.create({ data });
+    return this.prisma.user.create({
+      data,
+    });
   }
 
-  update(id: string, data: { name?: string }): Promise<UserEntity> {
+  update(
+    id: string,
+    data: { name?: string; googleId?: string },
+  ): Promise<UserEntity> {
     return this.prisma.user.update({
       where: { id },
       data: {
         ...(data.name !== undefined && { name: data.name }),
+        ...(data.googleId !== undefined && {
+          googleId: data.googleId,
+        }),
       },
     });
   }
 
-  async updateRefreshTokenHash(id: string, hash: string | null): Promise<void> {
+  async updateRefreshTokenHash(
+    id: string,
+    hash: string | null,
+  ): Promise<void> {
     await this.prisma.user.update({
       where: { id },
-      data: { hashedRefreshToken: hash },
+      data: {
+        hashedRefreshToken: hash,
+      },
     });
   }
 
-  async findByVerificationToken(token: string): Promise<UserEntity | null> {
+  async findByVerificationToken(
+    token: string,
+  ): Promise<UserEntity | null> {
     return this.prisma.user.findUnique({
-      where: { emailVerificationToken: token },
+      where: {
+        emailVerificationToken: token,
+      },
     });
   }
 
@@ -55,10 +82,13 @@ export class PrismaUserRepository implements IUserRepository {
     });
   }
 
-
-  async findByPasswordResetToken(token: string): Promise<UserEntity | null> {
+  async findByPasswordResetToken(
+    token: string,
+  ): Promise<UserEntity | null> {
     return this.prisma.user.findUnique({
-      where: { passwordResetToken: token },
+      where: {
+        passwordResetToken: token,
+      },
     });
   }
 
@@ -75,7 +105,10 @@ export class PrismaUserRepository implements IUserRepository {
     });
   }
 
-  async updatePassword(userId: string, hashedPassword: string): Promise<void> {
+  async updatePassword(
+    userId: string,
+    hashedPassword: string,
+  ): Promise<void> {
     await this.prisma.user.update({
       where: { id: userId },
       data: {

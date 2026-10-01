@@ -26,6 +26,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { GoogleAuthDto } from './dto/google-auth.dto';
 
 interface AuthenticatedUser {
   userId: string;
@@ -130,6 +131,36 @@ export class AuthController {
   }
 
 
+
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login with Google',
+    description:
+      'Authenticates a user using a Google ID token and returns access + refresh tokens.',
+  })
+  @ApiBody({ type: GoogleAuthDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Google login successful',
+    type: AuthTokensDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Invalid or incomplete Google ID token',
+  })
+  @ApiResponse({
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    description: 'Too many Google login attempts (5 per minute)',
+  })
+  loginWithGoogle(
+    @Body() dto: GoogleAuthDto,
+  ): Promise<AuthTokensDto> {
+    return this.authService.loginWithGoogle(dto.idToken);
+  }
 
 
   @Public()
