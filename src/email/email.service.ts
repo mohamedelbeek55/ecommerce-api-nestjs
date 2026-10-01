@@ -5,6 +5,7 @@ import {
     OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { setDefaultResultOrder } from 'node:dns';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import type { Env } from '../config/env.validation';
@@ -23,6 +24,9 @@ export class EmailService implements OnModuleInit {
     private readonly frontendUrl: string;
 
     constructor(private readonly config: ConfigService<Env, true>) {
+        // Prefer IPv4 to avoid IPv6 connectivity issues on hosting platforms.
+        setDefaultResultOrder('ipv4first');
+
         this.fromEmail = this.config.get('EMAIL_FROM', { infer: true });
         this.frontendUrl = this.config.get('FRONTEND_URL', { infer: true });
 
@@ -105,9 +109,14 @@ export class EmailService implements OnModuleInit {
                 html: options.html,
             });
 
-            this.logger.log(`📧 Email sent → ${options.to} (${options.subject})`);
+            this.logger.log(
+                `📧 Email sent → ${options.to} (${options.subject})`,
+            );
         } catch (error) {
-            this.logger.error(`Failed to send email → ${options.to}`, error);
+            this.logger.error(
+                `Failed to send email → ${options.to}`,
+                error,
+            );
             throw new InternalServerErrorException('Failed to send email');
         }
     }
