@@ -41,22 +41,23 @@ export class AuthService {
 
     const user = await this.userRepository.create({
       email: dto.email,
-      password: await bcrypt.hash(dto.password, 12), // ✅ bcrypt for passwords
+      password: await bcrypt.hash(dto.password, 12),
       name: dto.name,
       emailVerificationToken: verificationToken,
       emailVerificationTokenExpiresAt: tokenExpiresAt,
     });
 
-    try {
-      await this.emailService.sendVerificationEmail(
+    // Send verification email in the background.
+    // Registration should not wait for the email provider.
+    void this.emailService
+      .sendVerificationEmail(
         user.email,
         user.name,
         verificationToken,
-      );
-    } catch (error) {
-      // Don't fail registration if the email provider is down
-      this.logger.error('Failed to send verification email', error);
-    }
+      )
+      .catch((error) => {
+        this.logger.error('Failed to send verification email', error);
+      });
 
     return this.issueTokens(user);
   }
@@ -64,7 +65,7 @@ export class AuthService {
   async login(dto: LoginDto): Promise<AuthTokensDto> {
     const user = await this.userRepository.findByEmail(dto.email);
     const validPassword = user
-      ? await bcrypt.compare(dto.password, user.password) // ✅ bcrypt for passwords
+      ? await bcrypt.compare(dto.password, user.password)
       : false;
 
     if (!user || !validPassword) {
@@ -87,7 +88,6 @@ export class AuthService {
   ): Promise<AuthTokensDto> {
     const user = await this.userRepository.findById(userId);
 
-    // ✅ SHA-256 comparison (no truncation, constant-time)
     if (
       !user?.hashedRefreshToken ||
       !compareTokenWithHash(providedRefreshToken, user.hashedRefreshToken)
@@ -110,6 +110,7 @@ export class AuthService {
         expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true }),
       },
     );
+
     const refreshToken = await this.jwtService.signAsync(
       { sub: user.id },
       {
@@ -118,7 +119,6 @@ export class AuthService {
       },
     );
 
-    // ✅ SHA-256 for refresh tokens (bcrypt truncates at 72 bytes)
     await this.userRepository.updateRefreshTokenHash(
       user.id,
       hashToken(refreshToken),
@@ -220,7 +220,7 @@ export class AuthService {
       throw new BadRequestException('Invalid or expired reset token');
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 12); // ✅ bcrypt for passwords
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
     await this.userRepository.updatePassword(user.id, hashedPassword);
   }
 }
