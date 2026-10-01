@@ -14,6 +14,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: devpassword123
           POSTGRES_DB: ecommerce_db
+
         ports:
           - 5433:5432
         options: >-
@@ -41,6 +42,9 @@ jobs:
       - name: Run end-to-end tests
         env:
           DATABASE_URL: postgresql://postgres:devpassword123@localhost:5433/ecommerce_db?schema=public
+          CLOUDINARY_CLOUD_NAME: test
+          CLOUDINARY_API_KEY: test
+          CLOUDINARY_API_SECRET: test
         run: npm run test:e2e
 
       - name: Lint
