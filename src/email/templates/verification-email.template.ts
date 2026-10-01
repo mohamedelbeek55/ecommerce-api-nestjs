@@ -1,65 +1,171 @@
 import { renderBaseLayout } from './base-layout.template';
 
 interface VerificationEmailOptions {
-    name: string;
-    verificationUrl: string;
-    appName: string;
-    expiresInHours: number;
+  name: string;
+  verificationUrl: string;
+  appName: string;
+  expiresInHours: number;
 }
 
 export function renderVerificationEmail(
-    options: VerificationEmailOptions,
+  options: VerificationEmailOptions,
 ): string {
-    const { name, verificationUrl, appName, expiresInHours } = options;
+  const { name, verificationUrl, appName, expiresInHours } = options;
 
-    const content = `
-    <h2 style="margin:0 0 16px 0;color:#111827;font-size:22px;font-weight:600;letter-spacing:-0.01em;">
-      Verify your email address
-    </h2>
+  const content = `
+    <div>
+      <!-- Heading -->
+      <h2
+        style="
+          margin:0 0 16px;
+          color:#1C1917;
+          font-size:24px;
+          line-height:1.3;
+          font-weight:700;
+          letter-spacing:-0.02em;
+        "
+      >
+        Verify your email address
+      </h2>
 
-    <p style="margin:0 0 16px 0;color:#374151;font-size:15px;line-height:1.6;">
-      Hi <strong>${name}</strong>,
-    </p>
+      <!-- Greeting -->
+      <p
+        style="
+          margin:0 0 16px;
+          color:#1C1917;
+          font-size:15px;
+          line-height:1.7;
+        "
+      >
+        Hi <strong>${name}</strong>,
+      </p>
 
-    <p style="margin:0 0 24px 0;color:#374151;font-size:15px;line-height:1.6;">
-      Thanks for signing up for <strong>${appName}</strong>! To complete your registration, please confirm your email address by clicking the button below.
-    </p>
+      <!-- Message -->
+      <p
+        style="
+          margin:0 0 28px;
+          color:#736A63;
+          font-size:15px;
+          line-height:1.7;
+        "
+      >
+        Thanks for creating an account with
+        <strong style="color:#1C1917;">${appName}</strong>.
+        Please verify your email address to complete your registration.
+      </p>
 
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:32px 0;">
-      <tr>
-        <td align="center" style="border-radius:8px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
-          <a href="${verificationUrl}" target="_blank" style="display:inline-block;padding:14px 32px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;border-radius:8px;letter-spacing:0.01em;">
-            Verify Email Address
-          </a>
-        </td>
-      </tr>
-    </table>
+      <!-- CTA -->
+      <table
+        role="presentation"
+        cellpadding="0"
+        cellspacing="0"
+        border="0"
+        style="margin:0 0 28px;"
+      >
+        <tr>
+          <td
+            align="center"
+            style="
+              border-radius:6px;
+              background-color:#B85C38;
+            "
+          >
+            <a
+              href="${verificationUrl}"
+              target="_blank"
+              style="
+                display:inline-block;
+                padding:14px 28px;
+                color:#FFFFFF;
+                text-decoration:none;
+                font-size:14px;
+                line-height:1.2;
+                font-weight:600;
+                border-radius:6px;
+              "
+            >
+              Verify Email Address
+            </a>
+          </td>
+        </tr>
+      </table>
 
-    <p style="margin:0 0 12px 0;color:#6b7280;font-size:13px;line-height:1.6;">
-      Or copy and paste this link into your browser:
-    </p>
+      <!-- Alternative link -->
+      <p
+        style="
+          margin:0 0 10px;
+          color:#736A63;
+          font-size:13px;
+          line-height:1.6;
+        "
+      >
+        If the button doesn't work, copy and paste this link into your browser:
+      </p>
 
-    <div style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px;margin-bottom:24px;word-break:break-all;">
-      <a href="${verificationUrl}" style="color:#667eea;font-size:12px;text-decoration:none;font-family:'SF Mono',Monaco,'Cascadia Code',monospace;">
-        ${verificationUrl}
-      </a>
-    </div>
+      <div
+        style="
+          margin:0 0 24px;
+          padding:12px 14px;
+          background-color:#FBF7F2;
+          border:1px solid #E7DED4;
+          border-radius:6px;
+          word-break:break-all;
+        "
+      >
+        <a
+          href="${verificationUrl}"
+          target="_blank"
+          style="
+            color:#B85C38;
+            font-size:12px;
+            line-height:1.6;
+            text-decoration:none;
+            font-family:'SF Mono',Monaco,'Cascadia Code',monospace;
+          "
+        >
+          ${verificationUrl}
+        </a>
+      </div>
 
-    <div style="background-color:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px;padding:12px 16px;margin-bottom:8px;">
-      <p style="margin:0;color:#92400e;font-size:13px;line-height:1.5;">
-        ⏱️ This link will expire in <strong>${expiresInHours} hours</strong>.
+      <!-- Expiration notice -->
+      <div
+        style="
+          margin:0 0 20px;
+          padding:14px 16px;
+          background-color:#EAD9C9;
+          border-radius:6px;
+        "
+      >
+        <p
+          style="
+            margin:0;
+            color:#1C1917;
+            font-size:13px;
+            line-height:1.6;
+          "
+        >
+          <strong>This verification link expires in ${expiresInHours} hours.</strong>
+        </p>
+      </div>
+
+      <!-- Security note -->
+      <p
+        style="
+          margin:0;
+          color:#736A63;
+          font-size:13px;
+          line-height:1.6;
+        "
+      >
+        If you didn't create an account with ${appName}, you can safely ignore this email.
       </p>
     </div>
-
-    <p style="margin:16px 0 0 0;color:#6b7280;font-size:13px;line-height:1.6;">
-      If you didn't create an account, you can safely ignore this email.
-    </p>
   `;
 
-    return renderBaseLayout({
-        title: `Verify your email — ${appName}`,
-        preheader: `Confirm your email address to activate your ${appName} account.`,
-        content,
-        appName,
-    });
+  return renderBaseLayout({
+    title: `Verify your email — ${appName}`,
+    preheader: `Confirm your email address to activate your ${appName} account.`,
+    content,
+    appName,
+  });
 }
