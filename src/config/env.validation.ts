@@ -31,6 +31,20 @@ export const envSchema = z.object({
     .string({ error: 'STRIPE_WEBHOOK_SECRET is required' })
     .min(1, 'STRIPE_WEBHOOK_SECRET is required'),
 
+
+  // Cloudinary
+  CLOUDINARY_CLOUD_NAME: z
+    .string({ error: 'CLOUDINARY_CLOUD_NAME is required' })
+    .min(1, 'CLOUDINARY_CLOUD_NAME is required'),
+
+  CLOUDINARY_API_KEY: z
+    .string({ error: 'CLOUDINARY_API_KEY is required' })
+    .min(1, 'CLOUDINARY_API_KEY is required'),
+
+  CLOUDINARY_API_SECRET: z
+    .string({ error: 'CLOUDINARY_API_SECRET is required' })
+    .min(1, 'CLOUDINARY_API_SECRET is required'),
+
   // Server
   PORT: z
     .string()

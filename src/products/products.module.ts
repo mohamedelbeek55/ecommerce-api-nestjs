@@ -1,19 +1,12 @@
 import { Module } from '@nestjs/common';
+import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 import { IProductRepository } from './domain/product.repository.interface';
-import { PrismaProductRepository } from './infrastructure/prisma-product.repository';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
+import { PrismaProductRepository } from './infrastructure/prisma-product.repository';
 
-/**
- * The custom provider is the DI binding that connects the abstract interface
- * (token) to the concrete Prisma implementation (value).
- *
- * Any class in this module that injects IProductRepository receives
- * PrismaProductRepository at runtime — without knowing it exists.
- *
- * To swap the database, change `useClass` here. Nothing else changes.
- */
 @Module({
+  imports: [CloudinaryModule],
   controllers: [ProductsController],
   providers: [
     {
@@ -24,4 +17,4 @@ import { ProductsService } from './products.service';
   ],
   exports: [IProductRepository, ProductsService],
 })
-export class ProductsModule {}
+export class ProductsModule { }

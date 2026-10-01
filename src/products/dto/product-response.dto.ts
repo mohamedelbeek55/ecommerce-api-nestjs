@@ -1,5 +1,31 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+class ProductImageResponseDto {
+    @ApiProperty({
+        description: 'Unique image identifier',
+        example: 'cm1image123456789',
+    })
+    id!: string;
+
+    @ApiProperty({
+        description: 'Cloudinary secure image URL',
+        example: 'https://res.cloudinary.com/example/image/upload/...',
+    })
+    url!: string;
+
+    @ApiProperty({
+        description: 'Cloudinary public ID',
+        example: 'ecommerce/products/abc123',
+    })
+    publicId!: string;
+
+    @ApiProperty({
+        description: 'Image creation timestamp',
+        format: 'date-time',
+    })
+    createdAt!: Date;
+}
+
 export class ProductResponseDto {
     @ApiProperty({
         description: 'Unique product identifier (CUID)',
@@ -15,7 +41,8 @@ export class ProductResponseDto {
 
     @ApiProperty({
         description: 'Product description',
-        example: 'Premium noise-cancelling over-ear headphones with 30h battery',
+        example:
+            'Premium noise-cancelling over-ear headphones with 30h battery',
     })
     description!: string;
 
@@ -39,15 +66,19 @@ export class ProductResponseDto {
     categoryId!: string;
 
     @ApiProperty({
+        description: 'Product images',
+        type: [ProductImageResponseDto],
+    })
+    images!: ProductImageResponseDto[];
+
+    @ApiProperty({
         description: 'Product creation timestamp',
-        example: '2026-01-15T10:30:00.000Z',
         format: 'date-time',
     })
     createdAt!: Date;
 
     @ApiProperty({
         description: 'Last product update timestamp',
-        example: '2026-01-20T14:45:00.000Z',
         format: 'date-time',
     })
     updatedAt!: Date;

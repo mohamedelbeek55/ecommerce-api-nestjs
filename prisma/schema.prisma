@@ -60,21 +60,33 @@ model Category {
 }
 
 model Product {
-  id          String   @id @default(cuid())
+  id          String        @id @default(cuid())
   name        String
   description String
-  // Decimal preserves exact monetary values — never use Float for money
-  price       Decimal  @db.Decimal(10, 2)
-  stock       Int      @default(0)
+  price       Decimal       @db.Decimal(10, 2)
+  stock       Int           @default(0)
   categoryId  String
-  category    Category @relation(fields: [categoryId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  category    Category      @relation(fields: [categoryId], references: [id])
+  images      ProductImage[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
   cartItems   CartItem[]
 
   @@index([categoryId])
-  @@index([name])        // supports product search/filtering
+  @@index([name])
   @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  url       String
+  publicId  String
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@map("product_images")
 }
 
 model Cart {

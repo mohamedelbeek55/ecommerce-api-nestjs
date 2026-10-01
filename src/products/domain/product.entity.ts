@@ -8,6 +8,14 @@ import { Prisma } from '@prisma/client';
  * price: Prisma.Decimal preserves exact monetary values across the
  * application boundary. Serialise to string when sending over HTTP.
  */
+
+export interface ProductImageEntity {
+  id: string;
+  url: string;
+  publicId: string;
+  createdAt: Date;
+}
+
 export interface ProductEntity {
   id: string;
   name: string;
@@ -17,12 +25,12 @@ export interface ProductEntity {
   categoryId: string;
   createdAt: Date;
   updatedAt: Date;
+  images: ProductImageEntity[];
 }
 
 export interface CreateProductDto {
   name: string;
   description: string;
-  /** Accepts a number or numeric string; the repository stores it as Decimal */
   price: number | string;
   stock: number;
   categoryId: string;

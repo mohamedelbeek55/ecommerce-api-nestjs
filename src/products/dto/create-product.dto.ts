@@ -18,7 +18,9 @@ export class CreateProductDto {
     minLength: 2,
     maxLength: 100,
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @IsNotEmpty()
   @MinLength(2, { message: 'Name must be at least 2 characters long' })
@@ -27,15 +29,22 @@ export class CreateProductDto {
 
   @ApiProperty({
     description: 'Detailed product description',
-    example: 'Premium noise-cancelling over-ear headphones with 30h battery life',
+    example:
+      'Premium noise-cancelling over-ear headphones with 30h battery life',
     minLength: 10,
     maxLength: 1000,
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @IsNotEmpty()
-  @MinLength(10, { message: 'Description must be at least 10 characters long' })
-  @MaxLength(1000, { message: 'Description must not exceed 1000 characters' })
+  @MinLength(10, {
+    message: 'Description must be at least 10 characters long',
+  })
+  @MaxLength(1000, {
+    message: 'Description must not exceed 1000 characters',
+  })
   description!: string;
 
   @ApiProperty({
@@ -43,7 +52,11 @@ export class CreateProductDto {
     example: 199.99,
     minimum: 0.01,
   })
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Price must have at most 2 decimal places' })
+  @Transform(({ value }) => Number(value))
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Price must have at most 2 decimal places' },
+  )
   @IsPositive({ message: 'Price must be greater than 0' })
   price!: number;
 
@@ -52,6 +65,7 @@ export class CreateProductDto {
     example: 42,
     minimum: 0,
   })
+  @Transform(({ value }) => Number(value))
   @IsInt()
   @Min(0, { message: 'Stock cannot be negative' })
   stock!: number;

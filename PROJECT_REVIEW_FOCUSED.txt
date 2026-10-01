@@ -1,0 +1,1653 @@
+
+
+==================== src\app.module.ts ====================
+
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AuthModule } from './auth/auth.module';
+import { CartModule } from './cart/cart.module';
+import { CategoriesModule } from './categories/categories.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
+import { validate } from './config/env.validation';
+import { DatabaseModule } from './database/database.module';
+import { HealthModule } from './health/health.module';
+import { ProductsModule } from './products/products.module';
+import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
+import { UsersModule } from './users/users.module';
+import { EmailModule } from './email/email.module';
+
+@Module({
+  imports: [
+    /**
+     * ConfigModule.forRoot with our Zod `validate` function:
+     *  - isGlobal: true  → ConfigService is available everywhere without re-importing
+     *  - validate        → runs on startup; throws if any variable is missing/invalid
+     *  - envFilePath      → loads .env in non-production environments
+     */
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validate,
+      envFilePath:
+        process.env.NODE_ENV === 'test'
+          ? ['.env.test', '.env']
+          : '.env',
+    }),
+    ThrottlerModule.forRoot([
+      {
+        limit: 20,
+        ttl: 60000,
+      },
+    ]),
+    UsersModule,
+    AuthModule,
+
+    // Global database module — PrismaService is available app-wide
+    DatabaseModule,
+
+    // Feature modules
+    HealthModule,
+    CategoriesModule,
+    ProductsModule,
+    CartModule,
+    OrdersModule,
+    PaymentsModule,
+    EmailModule
+  ],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
+})
+export class AppModule { }
+
+
+==================== src\main.ts ====================
+
+import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
+import { AppModule } from './app.module';
+import type { Env } from './config/env.validation';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.enableShutdownHooks();
+
+  app.use(helmet());
+  const config = app.get(ConfigService<Env, true>);
+  const port = config.get('PORT', { infer: true });
+
+
+  // CORS: read allowed origins from env (comma-separated)
+  const corsOrigins = config
+    .get('CORS_ORIGINS', { infer: true })
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  app.enableCors({
+    origin: corsOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+  });
+
+
+  // Trust proxy header only when explicitly enabled (e.g. behind Render/nginx).
+  // Enabling it on a directly-exposed server lets clients spoof X-Forwarded-For
+  // and bypass IP-based rate limiting.
+  if (config.get('TRUST_PROXY', { infer: true })) {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+
+  app.setGlobalPrefix('api/v1');
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('E-Commerce API')
+    .setDescription(
+      'NestJS e-commerce API with catalog, cart, orders, and Stripe payments',
+    )
+    .setVersion('1.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'Authorization',
+        description: 'Enter JWT access token',
+        in: 'header',
+      },
+      'access-token',
+    )
+    .build();
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, swaggerDocument);
+
+  await app.listen(port, '0.0.0.0');
+  console.log(`Application running on: http://localhost:${port}/api/v1`);
+  console.log(`Health check: http://localhost:${port}/api/v1/health`);
+}
+
+bootstrap();
+
+
+==================== src\auth\auth.module.ts ====================
+
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { EmailModule } from '../email/email.module';
+import { UsersModule } from '../users/users.module';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RefreshJwtGuard } from './guards/refresh-jwt.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
+import { JwtStrategy } from './strategies/jwt.strategy';
+
+@Module({
+  imports: [
+    UsersModule,
+    PassportModule.register({}),
+    JwtModule.register({}),
+    EmailModule,
+  ],
+  controllers: [AuthController],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    JwtRefreshStrategy,
+    JwtAuthGuard,
+    RefreshJwtGuard,
+    RolesGuard,
+  ],
+  exports: [AuthService],
+})
+export class AuthModule { }
+
+
+==================== src\auth\auth.controller.ts ====================
+
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { AuthService } from './auth.service';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { Public } from './decorators/public.decorator';
+import { AuthTokensDto } from './dto/auth-response.dto';
+import { LoginDto } from './dto/login.dto';
+import { RefreshDto } from './dto/refresh.dto';
+import { RegisterDto } from './dto/register.dto';
+import { RefreshJwtGuard } from './guards/refresh-jwt.guard';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+
+interface AuthenticatedUser {
+  userId: string;
+}
+
+@ApiTags('Auth')
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) { }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('register')
+  @ApiOperation({
+    summary: 'Register a new user',
+    description:
+      'Creates a new user account and returns access + refresh tokens. ' +
+      'A verification email will be sent to the provided address.',
+  })
+  @ApiBody({ type: RegisterDto })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'User registered successfully',
+    type: AuthTokensDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Validation failed (invalid email, weak password, etc.)',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: [
+          'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+        ],
+        error: 'Bad Request',
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'Email is already registered',
+    schema: {
+      example: {
+        statusCode: 409,
+        message: 'Email already registered',
+        error: 'Conflict',
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    description: 'Too many registration attempts (5 per minute)',
+  })
+  register(@Body() dto: RegisterDto): Promise<AuthTokensDto> {
+    return this.authService.register(dto);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login',
+    description:
+      'Authenticates a user with email and password, and returns access + refresh tokens.',
+  })
+  @ApiBody({ type: LoginDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Login successful',
+    type: AuthTokensDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Invalid email or password',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Invalid credentials',
+        error: 'Unauthorized',
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Email address is not verified yet',
+    schema: {
+      example: {
+        statusCode: 403,
+        message:
+          'Please verify your email address before logging in. Check your inbox for the verification link, or request a new one.',
+        error: 'Forbidden',
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    description: 'Too many login attempts (5 per minute)',
+  })
+  login(@Body() dto: LoginDto): Promise<AuthTokensDto> {
+    return this.authService.login(dto);
+  }
+
+
+
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @UseGuards(RefreshJwtGuard)
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Refresh access token',
+    description:
+      'Exchanges a valid refresh token for a new pair of access + refresh tokens.',
+  })
+  @ApiBody({ type: RefreshDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Tokens refreshed successfully',
+    type: AuthTokensDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Refresh token is invalid or expired',
+  })
+  refresh(
+    @Body() dto: RefreshDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<AuthTokensDto> {
+    return this.authService.refresh(user.userId, dto.refreshToken);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Logout',
+    description:
+      'Invalidates the current user\'s refresh token. The access token will expire on its own.',
+  })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'Logged out successfully',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid access token',
+  })
+  logout(@CurrentUser() user: AuthenticatedUser): Promise<void> {
+    return this.authService.logout(user.userId);
+  }
+  @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Verify email address',
+    description: 'Verifies a user\'s email address using the token sent via email.',
+  })
+  @ApiBody({ type: VerifyEmailDto })
+  @ApiResponse({ status: HttpStatus.NO_CONTENT, description: 'Email verified successfully' })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid or expired token' })
+  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<void> {
+    await this.authService.verifyEmail(dto.token);
+  }
+
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Request a password reset',
+    description:
+      'Sends a password reset link to the email address if an account exists. ' +
+      'Always returns 204 regardless of whether the email is registered (to prevent user enumeration).',
+  })
+  @ApiBody({ type: ForgotPasswordDto })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'Request processed. Check your email if an account exists.',
+  })
+  @ApiResponse({
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    description: 'Too many attempts (5 per minute)',
+  })
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<void> {
+    await this.authService.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('reset-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Reset password using a token',
+    description:
+      'Resets the password using the token received via email. ' +
+      'This invalidates all existing sessions (the user must log in again).',
+  })
+
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'Password reset successfully. All sessions have been invalidated.',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid or expired token, or password does not meet requirements',
+  })
+  @ApiResponse({
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    description: 'Too many attempts (5 per minute)',
+  })
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
+    await this.authService.resetPassword(dto.token, dto.newPassword);
+  }
+
+
+
+  @Public()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Resend email verification link',
+    description:
+      'Sends a new verification email if the account exists and is not yet verified. ' +
+      'Always returns 204 to prevent user enumeration.',
+  })
+  @ApiBody({ type: ResendVerificationDto })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description:
+      'Request processed. Check your email if an unverified account exists.',
+  })
+  @ApiResponse({
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    description: 'Too many requests (3 per minute)',
+  })
+  async resendVerification(
+    @Body() dto: ResendVerificationDto,
+  ): Promise<void> {
+    await this.authService.resendVerification(dto.email);
+  }
+}
+
+
+==================== src\auth\auth.service.ts ====================
+
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
+import type { Env } from '../config/env.validation';
+import type { UserEntity } from '../users/domain/user.entity';
+import { IUserRepository } from '../users/domain/user.repository.interface';
+import type { LoginDto } from './dto/login.dto';
+import type { RegisterDto } from './dto/register.dto';
+import { AuthTokensDto } from './dto/auth-response.dto';
+import { EmailService } from '../email/email.service';
+import { hashToken, compareTokenWithHash } from './utils/hash-token.util';
+
+@Injectable()
+export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
+  constructor(
+    private readonly userRepository: IUserRepository,
+    private readonly jwtService: JwtService,
+    private readonly config: ConfigService<Env, true>,
+    private readonly emailService: EmailService,
+  ) { }
+
+  async register(dto: RegisterDto): Promise<AuthTokensDto> {
+    const existingUser = await this.userRepository.findByEmail(dto.email);
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
+    }
+
+    const verificationToken = randomBytes(32).toString('hex');
+    const tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const user = await this.userRepository.create({
+      email: dto.email,
+      password: await bcrypt.hash(dto.password, 12), // ✅ bcrypt for passwords
+      name: dto.name,
+      emailVerificationToken: verificationToken,
+      emailVerificationTokenExpiresAt: tokenExpiresAt,
+    });
+
+    try {
+      await this.emailService.sendVerificationEmail(
+        user.email,
+        user.name,
+        verificationToken,
+      );
+    } catch (error) {
+      // Don't fail registration if the email provider is down
+      this.logger.error('Failed to send verification email', error);
+    }
+
+    return this.issueTokens(user);
+  }
+
+  async login(dto: LoginDto): Promise<AuthTokensDto> {
+    const user = await this.userRepository.findByEmail(dto.email);
+    const validPassword = user
+      ? await bcrypt.compare(dto.password, user.password) // ✅ bcrypt for passwords
+      : false;
+
+    if (!user || !validPassword) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.isEmailVerified) {
+      throw new ForbiddenException(
+        'Please verify your email address before logging in. ' +
+        'Check your inbox for the verification link, or request a new one.',
+      );
+    }
+
+    return this.issueTokens(user);
+  }
+
+  async refresh(
+    userId: string,
+    providedRefreshToken: string,
+  ): Promise<AuthTokensDto> {
+    const user = await this.userRepository.findById(userId);
+
+    // ✅ SHA-256 comparison (no truncation, constant-time)
+    if (
+      !user?.hashedRefreshToken ||
+      !compareTokenWithHash(providedRefreshToken, user.hashedRefreshToken)
+    ) {
+      throw new UnauthorizedException();
+    }
+
+    return this.issueTokens(user);
+  }
+
+  async logout(userId: string): Promise<void> {
+    await this.userRepository.updateRefreshTokenHash(userId, null);
+  }
+
+  private async issueTokens(user: UserEntity): Promise<AuthTokensDto> {
+    const accessToken = await this.jwtService.signAsync(
+      { sub: user.id, email: user.email, role: user.role },
+      {
+        secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
+        expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true }),
+      },
+    );
+    const refreshToken = await this.jwtService.signAsync(
+      { sub: user.id },
+      {
+        secret: this.config.get('JWT_REFRESH_SECRET', { infer: true }),
+        expiresIn: this.config.get('JWT_REFRESH_EXPIRES_IN', { infer: true }),
+      },
+    );
+
+    // ✅ SHA-256 for refresh tokens (bcrypt truncates at 72 bytes)
+    await this.userRepository.updateRefreshTokenHash(
+      user.id,
+      hashToken(refreshToken),
+    );
+
+    return { accessToken, refreshToken };
+  }
+
+  async verifyEmail(token: string): Promise<void> {
+    const user = await this.userRepository.findByVerificationToken(token);
+
+    if (!user) {
+      throw new BadRequestException('Invalid verification token');
+    }
+
+    if (
+      user.emailVerificationTokenExpiresAt &&
+      user.emailVerificationTokenExpiresAt < new Date()
+    ) {
+      throw new BadRequestException('Verification token has expired');
+    }
+
+    await this.userRepository.updateUserVerificationStatus(user.id, {
+      isEmailVerified: true,
+      emailVerificationToken: null,
+      emailVerificationTokenExpiresAt: null,
+    });
+  }
+
+  async resendVerification(email: string): Promise<void> {
+    const user = await this.userRepository.findByEmail(email);
+
+    // Always return silently to prevent user enumeration
+    if (!user) {
+      return;
+    }
+
+    if (user.isEmailVerified) {
+      return;
+    }
+
+    const newToken = randomBytes(32).toString('hex');
+    const newTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await this.userRepository.updateUserVerificationStatus(user.id, {
+      emailVerificationToken: newToken,
+      emailVerificationTokenExpiresAt: newTokenExpiresAt,
+    });
+
+    try {
+      await this.emailService.sendVerificationEmail(
+        user.email,
+        user.name,
+        newToken,
+      );
+    } catch (error) {
+      this.logger.error('Failed to resend verification email', error);
+    }
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.userRepository.findByEmail(email);
+
+    // Always return silently to prevent user enumeration
+    if (!user) {
+      return;
+    }
+
+    const resetToken = randomBytes(32).toString('hex');
+    const tokenExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await this.userRepository.updatePasswordReset(user.id, {
+      passwordResetToken: resetToken,
+      passwordResetTokenExpiresAt: tokenExpiresAt,
+    });
+
+    try {
+      await this.emailService.sendPasswordResetEmail(
+        user.email,
+        user.name,
+        resetToken,
+      );
+    } catch (error) {
+      this.logger.error('Failed to send password reset email', error);
+    }
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const user = await this.userRepository.findByPasswordResetToken(token);
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    if (
+      user.passwordResetTokenExpiresAt &&
+      user.passwordResetTokenExpiresAt < new Date()
+    ) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12); // ✅ bcrypt for passwords
+    await this.userRepository.updatePassword(user.id, hashedPassword);
+  }
+}
+
+
+==================== src\auth\guards\jwt-auth.guard.ts ====================
+
+import { ExecutionContext, Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { AuthGuard } from '@nestjs/passport';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  constructor(private readonly reflector: Reflector) {
+    super();
+  }
+
+  canActivate(context: ExecutionContext) {
+    const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    return isPublic ? true : super.canActivate(context);
+  }
+}
+
+
+==================== src\auth\guards\roles.guard.ts ====================
+
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { Role } from '@prisma/client';
+
+@Injectable()
+export class RolesGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const roles = this.reflector.getAllAndOverride<Role[]>('roles', [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (!roles?.length) {
+      return true;
+    }
+
+    const request = context.switchToHttp().getRequest();
+    if (!roles.includes(request.user?.role)) {
+      throw new ForbiddenException();
+    }
+
+    return true;
+  }
+}
+
+
+==================== src\auth\strategies\jwt.strategy.ts ====================
+
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import type { Env } from '../../config/env.validation';
+
+interface AccessTokenPayload {
+  sub: string;
+  email: string;
+  role: string;
+}
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
+  constructor(config: ConfigService<Env, true>) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      secretOrKey: config.get('JWT_ACCESS_SECRET', { infer: true }),
+    });
+  }
+
+  validate(payload: AccessTokenPayload) {
+    return { userId: payload.sub, email: payload.email, role: payload.role };
+  }
+}
+
+
+==================== src\auth\strategies\jwt-refresh.strategy.ts ====================
+
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import type { Env } from '../../config/env.validation';
+
+interface RefreshTokenPayload {
+  sub: string;
+}
+
+@Injectable()
+export class JwtRefreshStrategy extends PassportStrategy(
+  Strategy,
+  'jwt-refresh',
+) {
+  constructor(config: ConfigService<Env, true>) {
+    super({
+      jwtFromRequest: ExtractJwt.fromBodyField('refreshToken'),
+      secretOrKey: config.get('JWT_REFRESH_SECRET', { infer: true }),
+    });
+  }
+
+  validate(payload: RefreshTokenPayload) {
+    return { userId: payload.sub };
+  }
+}
+
+
+==================== src\orders\orders.service.ts ====================
+
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { OrderEntity } from './domain/order.entity';
+import {
+  CartEmptyError,
+  InsufficientStockError,
+} from './domain/order.entity';
+import { IOrderRepository } from './domain/order.repository.interface';
+import { OrderResponseDto } from './dto/order-response.dto';
+
+@Injectable()
+export class OrdersService {
+  constructor(private readonly orderRepository: IOrderRepository) { }
+
+  async checkout(userId: string): Promise<OrderResponseDto> {
+    try {
+      return this.toResponse(await this.orderRepository.checkout(userId));
+    } catch (error) {
+      if (error instanceof CartEmptyError) {
+        throw new BadRequestException('Cart is empty');
+      }
+      if (error instanceof InsufficientStockError) {
+        throw new BadRequestException('Insufficient stock');
+      }
+      throw error;
+    }
+  }
+
+  async findAll(userId: string): Promise<OrderResponseDto[]> {
+    const orders = await this.orderRepository.findAllByUserId(userId);
+    return orders.map((order) => this.toResponse(order));
+  }
+
+  async findById(userId: string, orderId: string): Promise<OrderResponseDto> {
+    const order = await this.orderRepository.findById(userId, orderId);
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    return this.toResponse(order);
+  }
+
+  private toResponse(order: OrderEntity): OrderResponseDto {
+    return {
+      id: order.id,
+      status: order.status as OrderResponseDto['status'],
+      total: order.total.toString(),
+      items: order.items.map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        unitPrice: item.unitPrice.toString(),
+        quantity: item.quantity,
+        subtotal: item.subtotal.toString(),
+      })),
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    };
+  }
+}
+
+
+==================== src\orders\orders.controller.ts ====================
+
+import {
+  Controller,
+  Get,
+  HttpStatus,
+  Param,
+  Post,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { OrderResponseDto } from './dto/order-response.dto';
+import { OrdersService } from './orders.service';
+
+interface AuthenticatedUser {
+  userId: string;
+}
+
+@ApiTags('Orders')
+@ApiBearerAuth('access-token')
+@Controller('orders')
+export class OrdersController {
+  constructor(private readonly ordersService: OrdersService) { }
+
+  @Post('checkout')
+  @ApiOperation({
+    summary: 'Checkout — create an order from cart',
+    description:
+      'Creates a new order from the current cart contents, decrements product stock, and clears the cart. ' +
+      'Fails if the cart is empty or if any product has insufficient stock.',
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Order created successfully',
+    type: OrderResponseDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Cart is empty or insufficient stock',
+    schema: {
+      examples: {
+        cartEmpty: {
+          summary: 'Cart is empty',
+          value: {
+            statusCode: 400,
+            message: 'Cart is empty',
+            error: 'Bad Request',
+          },
+        },
+        insufficientStock: {
+          summary: 'Insufficient stock',
+          value: {
+            statusCode: 400,
+            message: 'Insufficient stock',
+            error: 'Bad Request',
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid access token',
+  })
+  checkout(@CurrentUser() user: AuthenticatedUser): Promise<OrderResponseDto> {
+    return this.ordersService.checkout(user.userId);
+  }
+
+  @Get()
+  @ApiOperation({
+    summary: 'List current user orders',
+    description:
+      'Returns all orders placed by the authenticated user, most recent first.',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Orders retrieved successfully',
+    type: [OrderResponseDto],
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid access token',
+  })
+  findAll(@CurrentUser() user: AuthenticatedUser): Promise<OrderResponseDto[]> {
+    return this.ordersService.findAll(user.userId);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Get order by ID',
+    description:
+      'Returns a single order by ID. Only the owner of the order can access it.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Order ID (CUID)',
+    example: 'cm9x8y7z6w5v4u3t2s1r0q9p',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Order retrieved successfully',
+    type: OrderResponseDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Order not found or does not belong to the current user',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid access token',
+  })
+  findById(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') orderId: string,
+  ): Promise<OrderResponseDto> {
+    return this.ordersService.findById(user.userId, orderId);
+  }
+}
+
+
+==================== src\payments\payments.service.ts ====================
+
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import Stripe from 'stripe';
+import type { Env } from '../config/env.validation';
+import type { OrderStatus } from '../orders/domain/order.entity';
+import { IOrderRepository } from '../orders/domain/order.repository.interface';
+import { CreatePaymentIntentResponseDto } from './dto/create-payment-intent-response.dto';
+import { WebhookResponseDto } from './dto/webhook-response.dto';
+
+export const STRIPE_CLIENT = Symbol('STRIPE_CLIENT');
+
+/**
+ * PaymentIntent statuses that allow a client to complete payment.
+ * Anything else (succeeded, canceled, processing, requires_capture)
+ * means the client secret is useless.
+ */
+const USABLE_PAYMENT_INTENT_STATUSES: Stripe.PaymentIntent.Status[] = [
+  'requires_payment_method',
+  'requires_confirmation',
+  'requires_action',
+];
+
+@Injectable()
+export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
+  constructor(
+    private readonly orderRepository: IOrderRepository,
+    @Inject(STRIPE_CLIENT) private readonly stripe: Stripe,
+    config: ConfigService<Env, true>,
+  ) {
+    this.webhookSecret = config.get('STRIPE_WEBHOOK_SECRET', { infer: true });
+  }
+
+  private readonly webhookSecret: string;
+  private readonly paymentIntentCreationLocks = new Map<
+    string,
+    Promise<void>
+  >();
+
+  async createPaymentIntent(
+    orderId: string,
+    userId: string,
+  ): Promise<CreatePaymentIntentResponseDto> {
+    const order = await this.orderRepository.findById(userId, orderId);
+    if (!order) {
+      throw new BadRequestException('Order not found');
+    }
+    if (order.status !== 'PENDING') {
+      throw new BadRequestException('Order is not pending payment');
+    }
+
+    const amount = order.total.mul(100).toNumber();
+    if (amount <= 0) {
+      throw new BadRequestException('Order total must be greater than zero');
+    }
+
+    let paymentIntent: Stripe.PaymentIntent;
+    let paymentIntentStored = false;
+    if (order.stripePaymentIntentId) {
+      paymentIntent = await this.stripe.paymentIntents.retrieve(
+        order.stripePaymentIntentId,
+      );
+    } else {
+      const previousCreation = this.paymentIntentCreationLocks.get(order.id);
+      if (previousCreation) {
+        await previousCreation;
+        const updatedOrder = await this.orderRepository.findById(
+          userId,
+          orderId,
+        );
+        if (!updatedOrder?.stripePaymentIntentId) {
+          throw new BadRequestException('Payment intent could not be created');
+        }
+        paymentIntent = await this.stripe.paymentIntents.retrieve(
+          updatedOrder.stripePaymentIntentId,
+        );
+      } else {
+        let releaseLock!: () => void;
+        const creationLock = new Promise<void>((resolve) => {
+          releaseLock = resolve;
+        });
+        this.paymentIntentCreationLocks.set(order.id, creationLock);
+        try {
+          const currentOrder = await this.orderRepository.findById(
+            userId,
+            orderId,
+          );
+          if (!currentOrder) {
+            throw new BadRequestException('Order not found');
+          }
+          paymentIntent = currentOrder.stripePaymentIntentId
+            ? await this.stripe.paymentIntents.retrieve(
+              currentOrder.stripePaymentIntentId,
+            )
+            : await this.stripe.paymentIntents.create(
+              {
+                amount,
+                currency: 'usd',
+                metadata: { orderId },
+                automatic_payment_methods: {
+                  enabled: true,
+                  allow_redirects: 'never',
+                },
+              },
+              { idempotencyKey: `order-payment-intent:${order.id}` },
+            );
+          if (!currentOrder.stripePaymentIntentId) {
+            await this.orderRepository.updatePaymentIntentId(
+              order.id,
+              paymentIntent.id,
+            );
+            paymentIntentStored = true;
+          }
+        } finally {
+          releaseLock();
+          this.paymentIntentCreationLocks.delete(order.id);
+        }
+      }
+    }
+
+    if (!paymentIntent.client_secret) {
+      throw new BadRequestException('Stripe did not return a client secret');
+    }
+
+    // 🛡️ Refuse to hand out a client secret for a PaymentIntent that can no
+    // longer be paid (already succeeded, canceled, processing, etc.).
+    if (!USABLE_PAYMENT_INTENT_STATUSES.includes(paymentIntent.status)) {
+      this.logger.error(
+        `Cannot return client secret: PaymentIntent ${paymentIntent.id} ` +
+        `is in status "${paymentIntent.status}" (order ${order.id})`,
+      );
+      throw new BadRequestException(
+        `Payment intent is in "${paymentIntent.status}" state and cannot be used. ` +
+        `Please create a new order.`,
+      );
+    }
+
+    if (!paymentIntentStored) {
+      await this.orderRepository.updatePaymentIntentId(
+        order.id,
+        paymentIntent.id,
+      );
+    }
+
+    return { clientSecret: paymentIntent.client_secret };
+  }
+
+  async handleWebhookEvent(
+    rawBody: Buffer,
+    signatureHeader: string | undefined,
+  ): Promise<WebhookResponseDto> {
+    if (!signatureHeader) {
+      throw new BadRequestException('Stripe signature is required');
+    }
+
+    let event: Stripe.Event;
+    try {
+      event = this.stripe.webhooks.constructEvent(
+        rawBody,
+        signatureHeader,
+        this.webhookSecret,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Rejected webhook with invalid signature: ${(error as Error).message}`,
+      );
+      throw new BadRequestException('Invalid Stripe webhook signature');
+    }
+
+    // Ignore event types we don't handle — return 200 so Stripe stops retrying
+    if (
+      event.type !== 'payment_intent.succeeded' &&
+      event.type !== 'payment_intent.payment_failed'
+    ) {
+      return { received: true };
+    }
+
+    const paymentIntent = event.data.object as Stripe.PaymentIntent;
+
+    // TODO(payment-flow): Do NOT cancel the order on payment_failed.
+    // Stripe retries the same PaymentIntent when the customer tries a new card,
+    // and canceling here breaks the retry (money charged, order canceled).
+    // Proper fix: leave the order PENDING on payment_failed and only cancel on
+    // explicit payment_intent.canceled, or when the order expires.
+    const status: OrderStatus =
+      event.type === 'payment_intent.succeeded' ? 'CONFIRMED' : 'CANCELLED';
+
+    const order = await this.orderRepository.findByPaymentIntentId(
+      paymentIntent.id,
+    );
+    if (!order) {
+      this.logger.error(
+        `Webhook ${event.id} (${event.type}) received for unknown PaymentIntent ${paymentIntent.id}`,
+      );
+      return { received: true };
+    }
+
+    if (paymentIntent.metadata.orderId !== order.id) {
+      this.logger.error(
+        `Webhook ${event.id}: PaymentIntent ${paymentIntent.id} has metadata.orderId="${paymentIntent.metadata.orderId}" but the matched order is "${order.id}"`,
+      );
+      return { received: true };
+    }
+
+    if (event.type === 'payment_intent.succeeded') {
+      const expectedAmount = order.total.mul(100).toNumber();
+      if (paymentIntent.currency !== 'usd') {
+        this.logger.error(
+          `Webhook ${event.id}: currency mismatch — expected "usd", got "${paymentIntent.currency}" (PI ${paymentIntent.id})`,
+        );
+        return { received: true };
+      }
+      if (paymentIntent.amount_received !== expectedAmount) {
+        this.logger.error(
+          `Webhook ${event.id}: amount mismatch — expected ${expectedAmount}, got ${paymentIntent.amount_received} (PI ${paymentIntent.id})`,
+        );
+        return { received: true };
+      }
+    }
+
+    await this.orderRepository.processPaymentEvent(
+      event.id,
+      paymentIntent.id,
+      status,
+    );
+
+    return { received: true };
+  }
+}
+
+
+==================== src\payments\payments.controller.ts ====================
+
+import {
+  BadRequestException,
+  Controller,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Req,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiExcludeEndpoint,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import type { Request } from 'express';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Public } from '../auth/decorators/public.decorator';
+import { CreatePaymentIntentResponseDto } from './dto/create-payment-intent-response.dto';
+import { WebhookResponseDto } from './dto/webhook-response.dto';
+import { PaymentsService } from './payments.service';
+import { SkipThrottle } from '@nestjs/throttler';
+interface AuthenticatedUser {
+  userId: string;
+}
+
+type RawBodyRequest = Request & { rawBody?: Buffer };
+
+@ApiTags('Payments')
+@Controller('payments')
+export class PaymentsController {
+  constructor(private readonly paymentsService: PaymentsService) { }
+
+  @Post('orders/:orderId/intent')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Create a Stripe payment intent for an order',
+    description:
+      'Creates (or retrieves an existing) Stripe PaymentIntent for the given order. ' +
+      'Returns a client secret that the frontend uses with Stripe.js to complete payment.',
+  })
+  @ApiParam({
+    name: 'orderId',
+    description: 'Order ID (CUID)',
+    example: 'cm9x8y7z6w5v4u3t2s1r0q9p',
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Payment intent created (or retrieved) successfully',
+    type: CreatePaymentIntentResponseDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description:
+      'Order not found, not in PENDING state, or total is invalid',
+    schema: {
+      examples: {
+        orderNotFound: {
+          summary: 'Order not found',
+          value: {
+            statusCode: 400,
+            message: 'Order not found',
+            error: 'Bad Request',
+          },
+        },
+        notPending: {
+          summary: 'Order is not pending payment',
+          value: {
+            statusCode: 400,
+            message: 'Order is not pending payment',
+            error: 'Bad Request',
+          },
+        },
+        invalidTotal: {
+          summary: 'Order total must be greater than zero',
+          value: {
+            statusCode: 400,
+            message: 'Order total must be greater than zero',
+            error: 'Bad Request',
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid access token',
+  })
+  createPaymentIntent(
+    @Param('orderId') orderId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<CreatePaymentIntentResponseDto> {
+    return this.paymentsService.createPaymentIntent(orderId, user.userId);
+  }
+
+  @Public()
+  @SkipThrottle()
+  @Post('webhook')
+  @HttpCode(HttpStatus.OK)
+  @ApiExcludeEndpoint()
+  handleWebhook(
+    @Req() request: RawBodyRequest,
+    @Headers('stripe-signature') signature: string | undefined,
+  ): Promise<WebhookResponseDto> {
+    if (!request.rawBody) {
+      throw new BadRequestException('Raw request body is not available');
+    }
+    return this.paymentsService.handleWebhookEvent(request.rawBody, signature);
+  }
+}
+
+
+==================== src\database\prisma.service.ts ====================
+
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
+import type { Env } from '../config/env.validation';
+
+/**
+ * PrismaService extends PrismaClient so every Prisma model accessor
+ * (this.user, this.product, …) is available directly on the service.
+ *
+ * In Prisma v7, the datasource URL is no longer read from schema.prisma at
+ * runtime. We use the PrismaPg driver adapter pattern with a pg Pool
+ * to manage connections. The connection string is sourced from NestJS's
+ * ConfigService so it flows through Zod validation first.
+ *
+ * OnModuleInit    → $connect()    establishes the connection pool at startup.
+ * OnModuleDestroy → $disconnect() drains the pool on graceful shutdown.
+ */
+@Injectable()
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PrismaService.name);
+
+  constructor(config: ConfigService<Env, true>) {
+    const connectionString = config.get('DATABASE_URL', { infer: true });
+    const adapter = new PrismaPg(new Pool({ connectionString }));
+    super({ adapter });
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.$connect();
+    this.logger.log('Database connection established');
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.$disconnect();
+    this.logger.log('Database connection closed');
+  }
+
+  /**
+   * Lightweight connectivity check used by the health endpoint.
+   * SELECT 1 is the cheapest possible round-trip to Postgres.
+   */
+  async isHealthy(): Promise<boolean> {
+    try {
+      await this.$queryRaw`SELECT 1`;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+
+==================== prisma\schema.prisma ====================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  CUSTOMER
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String   // stored as bcrypt hash — never plaintext
+  name      String
+  role      Role     @default(CUSTOMER)
+  hashedRefreshToken String?
+
+  isEmailVerified Boolean   @default(false)
+  emailVerificationToken String?   @unique
+  emailVerificationTokenExpiresAt DateTime?
+
+passwordResetToken String?   @unique
+passwordResetTokenExpiresAt DateTime?
+  cart      Cart?
+  orders    Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@map("users")
+}
+
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+
+  products  Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  // Decimal preserves exact monetary values — never use Float for money
+  price       Decimal  @db.Decimal(10, 2)
+  stock       Int      @default(0)
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  cartItems   CartItem[]
+
+  @@index([categoryId])
+  @@index([name])        // supports product search/filtering
+  @@map("products")
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+model Order {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+  status    OrderStatus @default(PENDING)
+  total     Decimal     @db.Decimal(10, 2)
+  stripePaymentIntentId String? @unique
+  items     OrderItem[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([userId, createdAt])
+  @@map("orders")
+}
+
+model ProcessedStripeEvent {
+  id          String   @id
+  processedAt DateTime @default(now())
+
+  @@map("processed_stripe_events")
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  productName String
+  unitPrice   Decimal @db.Decimal(10, 2)
+  quantity    Int
+  subtotal    Decimal @db.Decimal(10, 2)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+
+==================== docker-compose.yml ====================
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: ecommerce-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ecommerce_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - ecommerce-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d ecommerce_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Override DATABASE_URL to use the Docker service hostname ("postgres" not "localhost")
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/ecommerce_db?schema=public
+      NODE_ENV: production
+    command: sh -c "npx prisma migrate deploy && node dist/main.js"
+    ports:
+      - "3000:3000"
+
+volumes:
+  ecommerce-postgres-data:
+
+
+==================== Dockerfile ====================
+
+# =============================================
+# Stage 1: Build
+# =============================================
+FROM node:24.9-bookworm-slim AS build
+
+WORKDIR /app
+
+# OpenSSL is required by Prisma
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openssl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install dependencies (including dev) for building
+COPY package*.json ./
+RUN npm ci --legacy-peer-deps --ignore-scripts
+
+# Copy source and build
+COPY . .
+RUN npm run generate && npm run build
+
+# =============================================
+# Stage 2: Runtime
+# =============================================
+FROM node:24.9-bookworm-slim AS runtime
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+# OpenSSL is required by Prisma at runtime too
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openssl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install production dependencies only
+COPY package*.json ./
+RUN npm ci --omit=dev --legacy-peer-deps --ignore-scripts
+
+# Install Prisma CLI (needed for `prisma migrate deploy` at startup)
+RUN npm install --no-save --legacy-peer-deps prisma@7.10.0 --ignore-scripts
+
+# Copy built artifacts + Prisma schema/migrations
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/prisma.config.ts ./prisma.config.ts
+
+# Generate Prisma client for the production environment
+RUN npx prisma generate
+
+# Run as non-root user (the `node` user ships with the official image)
+USER node
+
+EXPOSE 3000
+
+# Run migrations, then start the app
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]

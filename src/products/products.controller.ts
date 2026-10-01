@@ -9,10 +9,14 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -104,11 +108,69 @@ export class ProductsController {
 
   @Roles(Role.ADMIN)
   @Post()
+  @UseInterceptors(
+    FilesInterceptor('images', 5, {
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+      },
+      fileFilter: (_req, file, callback) => {
+        if (!file.mimetype.startsWith('image/')) {
+          callback(new Error('Only image files are allowed'), false);
+          return;
+        }
+
+        callback(null, true);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Create a product (Admin only)',
-    description: 'Creates a new product in the catalog.',
+    description:
+      'Creates a new product with 1 to 5 product images.',
   })
-  @ApiBody({ type: CreateProductDto })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          example: 'Modern Wooden Chair',
+        },
+        description: {
+          type: 'string',
+          example: 'A comfortable modern wooden chair.',
+        },
+        price: {
+          type: 'number',
+          example: 149.99,
+        },
+        stock: {
+          type: 'integer',
+          example: 20,
+        },
+        categoryId: {
+          type: 'string',
+          example: 'cm9x8y7z6w5v4u3t2s1r0q9p',
+        },
+        images: {
+          type: 'array',
+          items: {
+            type: 'string',
+            format: 'binary',
+          },
+        },
+      },
+      required: [
+        'name',
+        'description',
+        'price',
+        'stock',
+        'categoryId',
+        'images',
+      ],
+    },
+  })
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'Product created successfully',
@@ -122,22 +184,83 @@ export class ProductsController {
     status: HttpStatus.FORBIDDEN,
     description: 'Admin role required',
   })
-  create(@Body() dto: CreateProductDto): Promise<ProductResponseDto> {
-    return this.productsService.create(dto);
+  create(
+    @Body() dto: CreateProductDto,
+    @UploadedFiles()
+    files: Array<{
+      buffer: Buffer;
+      mimetype: string;
+      originalname: string;
+      size: number;
+    }>,
+  ): Promise<ProductResponseDto> {
+    return this.productsService.create(dto, files);
   }
 
   @Roles(Role.ADMIN)
   @Patch(':id')
+  @UseInterceptors(
+    FilesInterceptor('images', 5, {
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+      },
+      fileFilter: (_req, file, callback) => {
+        if (!file.mimetype.startsWith('image/')) {
+          callback(new Error('Only image files are allowed'), false);
+          return;
+        }
+
+        callback(null, true);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Update a product (Admin only)',
-    description: 'Updates an existing product.',
+    description:
+      'Updates product data. If images are provided, all existing product images are replaced.',
   })
   @ApiParam({
     name: 'id',
     description: 'Product ID (CUID)',
     example: 'cm1a2b3c4d5e6f7g8h9i0j1k',
   })
-  @ApiBody({ type: UpdateProductDto })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          example: 'Modern Wooden Chair',
+        },
+        description: {
+          type: 'string',
+          example: 'A comfortable modern wooden chair.',
+        },
+        price: {
+          type: 'number',
+          example: 149.99,
+        },
+        stock: {
+          type: 'integer',
+          example: 20,
+        },
+        categoryId: {
+          type: 'string',
+          example: 'cm9x8y7z6w5v4u3t2s1r0q9p',
+        },
+        images: {
+          type: 'array',
+          items: {
+            type: 'string',
+            format: 'binary',
+          },
+          description:
+            'Optional. Providing images replaces all existing product images.',
+        },
+      },
+    },
+  })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Product updated successfully',
@@ -158,8 +281,15 @@ export class ProductsController {
   update(
     @Param('id') id: string,
     @Body() dto: UpdateProductDto,
+    @UploadedFiles()
+    files?: Array<{
+      buffer: Buffer;
+      mimetype: string;
+      originalname: string;
+      size: number;
+    }>,
   ): Promise<ProductResponseDto> {
-    return this.productsService.update(id, dto);
+    return this.productsService.update(id, dto, files);
   }
 
   @Roles(Role.ADMIN)
@@ -167,7 +297,8 @@ export class ProductsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Delete a product (Admin only)',
-    description: 'Permanently removes a product from the catalog.',
+    description:
+      'Permanently removes a product and its Cloudinary images.',
   })
   @ApiParam({
     name: 'id',

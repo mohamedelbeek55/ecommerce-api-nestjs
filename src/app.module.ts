@@ -15,6 +15,7 @@ import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { UsersModule } from './users/users.module';
 import { EmailModule } from './email/email.module';
+import { CloudinaryModule } from './cloudinary/cloudinary.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { EmailModule } from './email/email.module';
     UsersModule,
     AuthModule,
 
+
     // Global database module — PrismaService is available app-wide
     DatabaseModule,
 
@@ -51,7 +53,8 @@ import { EmailModule } from './email/email.module';
     CartModule,
     OrdersModule,
     PaymentsModule,
-    EmailModule
+    EmailModule,
+    CloudinaryModule
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -4,12 +4,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { ProductEntity } from './domain/product.entity';
-import { IProductRepository } from './domain/product.repository.interface';
+import {
+  IProductRepository,
+  ProductImageInput,
+} from './domain/product.repository.interface';
 import { CreateProductDto } from './dto/create-product.dto';
 import { PaginatedProductsResponseDto } from './dto/paginated-products-response.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
 import { QueryProductDto } from './dto/query-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 function isPrismaErrorWithCode(error: unknown, code: string): boolean {
   return (
@@ -20,10 +24,18 @@ function isPrismaErrorWithCode(error: unknown, code: string): boolean {
   );
 }
 
+interface ProductImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  originalname: string;
+  size: number;
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
     private readonly productRepository: IProductRepository,
+    private readonly cloudinaryService: CloudinaryService,
   ) { }
 
   async findAll(
@@ -31,6 +43,7 @@ export class ProductsService {
   ): Promise<PaginatedProductsResponseDto> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
+
     const result = await this.productRepository.findAll({
       skip: (page - 1) * limit,
       take: limit,
@@ -48,7 +61,8 @@ export class ProductsService {
         total: result.total,
         page,
         limit,
-        totalPages: result.total === 0 ? 0 : Math.ceil(result.total / limit),
+        totalPages:
+          result.total === 0 ? 0 : Math.ceil(result.total / limit),
       },
     };
   }
@@ -63,19 +77,46 @@ export class ProductsService {
     return this.toResponse(product);
   }
 
-  async findByCategoryId(categoryId: string): Promise<ProductResponseDto[]> {
-    const products = await this.productRepository.findByCategoryId(categoryId);
+  async findByCategoryId(
+    categoryId: string,
+  ): Promise<ProductResponseDto[]> {
+    const products =
+      await this.productRepository.findByCategoryId(categoryId);
+
     return products.map((product) => this.toResponse(product));
   }
 
-  async create(dto: CreateProductDto): Promise<ProductResponseDto> {
+  async create(
+    dto: CreateProductDto,
+    files: ProductImageFile[],
+  ): Promise<ProductResponseDto> {
+    this.validateImageCount(files);
+
+    const uploadedImages: ProductImageInput[] = [];
+
     try {
-      const product = await this.productRepository.create(dto);
+      for (const file of files) {
+        const result = await this.cloudinaryService.uploadImage(file);
+
+        uploadedImages.push({
+          url: result.secure_url,
+          publicId: result.public_id,
+        });
+      }
+
+      const product = await this.productRepository.create(
+        dto,
+        uploadedImages,
+      );
+
       return this.toResponse(product);
     } catch (error) {
+      await this.cleanupCloudinaryImages(uploadedImages);
+
       if (isPrismaErrorWithCode(error, 'P2003')) {
         throw new BadRequestException('Category not found');
       }
+
       throw error;
     }
   }
@@ -83,30 +124,113 @@ export class ProductsService {
   async update(
     id: string,
     dto: UpdateProductDto,
+    files?: ProductImageFile[],
   ): Promise<ProductResponseDto> {
-    await this.ensureProductExists(id);
+    const existingProduct = await this.productRepository.findById(id);
+
+    if (!existingProduct) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const hasNewImages = files !== undefined && files.length > 0;
+
+    if (files !== undefined && files.length > 5) {
+      throw new BadRequestException(
+        'Product can have a maximum of 5 images',
+      );
+    }
+
+    if (hasNewImages) {
+      this.validateImageCount(files);
+    }
+
+    const uploadedImages: ProductImageInput[] = [];
 
     try {
-      const product = await this.productRepository.update(id, dto);
+      if (hasNewImages) {
+        for (const file of files) {
+          const result = await this.cloudinaryService.uploadImage(file);
+
+          uploadedImages.push({
+            url: result.secure_url,
+            publicId: result.public_id,
+          });
+        }
+      }
+
+      const product = await this.productRepository.update(
+        id,
+        dto,
+        hasNewImages ? uploadedImages : undefined,
+      );
+
+      /*
+       * The database is now the source of truth.
+       * Only after the DB update succeeds do we remove the old
+       * Cloudinary assets.
+       */
+      if (hasNewImages) {
+        await this.cleanupCloudinaryImages(
+          existingProduct.images.map((image) => ({
+            url: image.url,
+            publicId: image.publicId,
+          })),
+        );
+      }
+
       return this.toResponse(product);
     } catch (error) {
+      /*
+       * If the DB update failed, remove the newly uploaded images
+       * because they are no longer referenced by the database.
+       */
+      await this.cleanupCloudinaryImages(uploadedImages);
+
       if (isPrismaErrorWithCode(error, 'P2003')) {
         throw new BadRequestException('Category not found');
       }
+
       throw error;
     }
   }
 
   async delete(id: string): Promise<void> {
-    await this.ensureProductExists(id);
-    await this.productRepository.delete(id);
-  }
-
-  private async ensureProductExists(id: string): Promise<void> {
     const product = await this.productRepository.findById(id);
+
     if (!product) {
       throw new NotFoundException('Product not found');
     }
+
+    await this.cleanupCloudinaryImages(
+      product.images.map((image) => ({
+        url: image.url,
+        publicId: image.publicId,
+      })),
+    );
+
+    await this.productRepository.delete(id);
+  }
+
+  private validateImageCount(files: ProductImageFile[]): void {
+    if (!files || files.length < 1 || files.length > 5) {
+      throw new BadRequestException(
+        'Product must have between 1 and 5 images',
+      );
+    }
+  }
+
+  private async cleanupCloudinaryImages(
+    images: ProductImageInput[],
+  ): Promise<void> {
+    if (images.length === 0) {
+      return;
+    }
+
+    await Promise.allSettled(
+      images.map((image) =>
+        this.cloudinaryService.deleteImage(image.publicId),
+      ),
+    );
   }
 
   private toResponse(product: ProductEntity): ProductResponseDto {
@@ -117,6 +241,12 @@ export class ProductsService {
       price: product.price.toString(),
       stock: product.stock,
       categoryId: product.categoryId,
+      images: product.images.map((image) => ({
+        id: image.id,
+        url: image.url,
+        publicId: image.publicId,
+        createdAt: image.createdAt,
+      })),
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
     };
