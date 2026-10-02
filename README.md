@@ -16,7 +16,7 @@
 
 | Role | Email | Password |
 |------|-------|----------|
-| 👑 Admin | `admin@demo.local` | `Admin@123456` |
+| 👑 Admin | `admin@demo.com` | `Admin@123456` |
 | 👤 Customer | `customer@demo.com` | `Customer@123456` |
 
 
