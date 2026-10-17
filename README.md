@@ -7,6 +7,8 @@
 ![Neon](https://img.shields.io/badge/Neon-Serverless_DB-00E599?logo=neon)
 ![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma)
 ![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker)
+![Hostless](https://img.shields.io/badge/Hostless-Deployed-6366f1)
+![Vercel](https://img.shields.io/badge/Vercel-Frontend-000000?logo=vercel)
 ![Stripe](https://img.shields.io/badge/Stripe-Payments-635BFF?logo=stripe)
 ![Jest](https://img.shields.io/badge/Tested_with-Jest-C21325?logo=jest)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -17,9 +19,9 @@
 
 ## 🎮 Try It Live
 
-- **Interactive Swagger UI:** [https://ecommerce-api-nestjs-production-f953.up.railway.app/api/docs](https://ecommerce-api-nestjs-production-f953.up.railway.app/api/docs)
-- **Frontend Companion:** Angular 21 (Signals) + Tailwind CSS deployed on Vercel.
-- **Production API URL:** `https://ecommerce-api-nestjs-production-f953.up.railway.app/api/v1`
+- **Interactive Swagger UI:** [https://ecommerce-api.hostless.app/api/docs](https://ecommerce-api.hostless.app/api/docs)
+- **Frontend Companion (Storefront):** [https://ecommerce-frontend-nqbt.vercel.app/](https://ecommerce-frontend-nqbt.vercel.app/) (Angular 21 Signals + Tailwind CSS)
+- **Production API URL:** `https://ecommerce-api.hostless.app/api/v1`
 
 ### 🔑 Test Credentials
 
@@ -29,7 +31,7 @@
 | 👤 **Customer** | `customer@demo.com` | `Customer@123456` | Cart, atomic checkout, Stripe payments, orders |
 
 > 💡 **Quick Test:**
-> 1. Open [Swagger UI](https://ecommerce-api-nestjs-production-f953.up.railway.app/api/docs).
+> 1. Open [Swagger UI](https://ecommerce-api.hostless.app/api/docs).
 > 2. Call `POST /api/v1/auth/login` with either credential above.
 > 3. Copy the returned `accessToken`.
 > 4. Click **Authorize** at the top right, enter the Bearer token, and test any protected endpoint.
@@ -370,7 +372,7 @@ Copy `.env.example` to `.env` and provide your secrets:
 | `EMAIL_USER` | SMTP username | `your-email@gmail.com` |
 | `EMAIL_PASS` | SMTP application password | `your-app-password` |
 | `EMAIL_FROM` | Sender email address | `noreply@yourdomain.com` |
-| `FRONTEND_URL` | Base URL used for generated email action links | `http://localhost:3000` |
+| `FRONTEND_URL` | Base URL used for generated email action links | `https://ecommerce-frontend-nqbt.vercel.app` (or `http://localhost:4200`) |
 
 ---
 
@@ -436,10 +438,10 @@ The API is fully containerized and deployed in production:
 
 | Component | Platform | Configuration |
 |-----------|----------|---------------|
-| **Backend API** | [Railway](https://railway.app) / Container Host | Multi-stage Docker image, Node 24 slim, non-root user |
+| **Backend API** | [Hostless](https://ecommerce-api.hostless.app/api/docs) | Containerized Node 24 slim on Hostless (`https://ecommerce-api.hostless.app/api/v1`) |
 | **Database** | [Neon](https://neon.tech) | Managed serverless PostgreSQL with connection pooling |
 | **CI / CD** | GitHub Actions | Automatic migration deployment (`prisma migrate deploy`) on push to `main` |
-| **Frontend** | [Vercel](https://vercel.com) | Angular 21 (Signals) + Tailwind CSS |
+| **Frontend** | [Vercel](https://ecommerce-frontend-nqbt.vercel.app/) | Angular 21 (Signals) + Tailwind CSS ([Live Demo](https://ecommerce-frontend-nqbt.vercel.app/)) |
 
 ---
 

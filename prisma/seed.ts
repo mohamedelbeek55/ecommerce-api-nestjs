@@ -24,14 +24,14 @@ function requireEnv(name: string, fallback: string): string {
 }
 
 async function main() {
-    console.log('🌱 Starting database seed...');
+    console.log('🌱 Starting Modern Living furniture seed...');
 
     // ---------------------------------------------------------
     // 1. Admin User
     // ---------------------------------------------------------
     const adminEmail = requireEnv('ADMIN_EMAIL', 'admin@demo.com');
     const adminPassword = requireEnv('ADMIN_PASSWORD', 'Admin@123456');
-    const adminName = process.env.ADMIN_NAME ?? 'Mohamed (Admin)';
+    const adminName = process.env.ADMIN_NAME ?? 'Modern Living Admin';
 
     const hashedAdminPassword = await bcrypt.hash(adminPassword, 12);
 
@@ -79,18 +79,19 @@ async function main() {
     console.log(`✅ Customer ready: ${customer.email}`);
 
     // ---------------------------------------------------------
-    // 3. Categories
+    // 3. Furniture & Home Décor Categories
     // ---------------------------------------------------------
-    const categoriesData = [
-        { name: 'Electronics' },
-        { name: 'Clothing' },
-        { name: 'Books' },
-        { name: 'Home & Kitchen' },
-        { name: 'Fitness & Wellness' },
+    const furnitureCategories = [
+        { name: 'Sofas & Armchairs' },
+        { name: 'Tables & Desks' },
+        { name: 'Bedroom Furniture' },
+        { name: 'Lighting' },
+        { name: 'Storage & Shelving' },
+        { name: 'Home Décor & Accessories' },
     ];
 
     const categoryRecords = await Promise.all(
-        categoriesData.map((c) =>
+        furnitureCategories.map((c) =>
             prisma.category.upsert({
                 where: { name: c.name },
                 update: {},
@@ -98,251 +99,281 @@ async function main() {
             }),
         ),
     );
-    console.log(`✅ ${categoryRecords.length} categories ready`);
+    console.log(`✅ ${categoryRecords.length} furniture categories ready`);
 
     const getCatId = (name: string) => categoryRecords.find((c) => c.name === name)!.id;
 
     // ---------------------------------------------------------
-    // 4. Curated Products (Realistic USD Prices $5.00 - $49.99 & Unsplash Images)
+    // 4. Curated Furniture & Décor Products (28 Items)
     // ---------------------------------------------------------
-    const productsData = [
-        // --- Electronics ($2.50 - $5.99) ---
+    const furnitureProducts = [
+        // --- 1. Sofas & Armchairs ($249–$599) ---
         {
-            id: 'seed-prod-wireless-mouse',
-            name: 'Ergonomic Wireless Mouse',
-            description: 'Ultra-silent click wireless mouse with adjustable 4000 DPI and long-lasting rechargeable battery.',
-            price: '3.99',
-            stock: 45,
-            categoryId: getCatId('Electronics'),
-            imageUrl: 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?auto=format&fit=crop&w=800&q=80',
+            id: 'seed-furn-boucle-sofa',
+            name: 'Nordic 3-Seat Bouclé Sofa',
+            description: 'Sculptural three-seat sofa upholstered in premium textured cream bouclé fabric with a kiln-dried solid oak interior frame.',
+            price: '589.00',
+            stock: 12,
+            categoryId: getCatId('Sofas & Armchairs'),
+            imageUrl: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=1000&q=80',
         },
         {
-            id: 'seed-prod-mechanical-keycaps',
-            name: 'Custom Mechanical Keycaps Set',
-            description: 'Durable PBT double-shot keycaps set with custom Cherry MX stem profile for custom keyboards.',
-            price: '2.99',
-            stock: 35,
-            categoryId: getCatId('Electronics'),
-            imageUrl: 'https://images.unsplash.com/photo-1595225476474-87563907a212?auto=format&fit=crop&w=800&q=80',
+            id: 'seed-furn-walnut-chair',
+            name: 'Minimalist Walnut Lounge Chair',
+            description: 'Mid-century inspired low lounge chair featuring rich American walnut joinery and tailored oatmeal linen cushions.',
+            price: '349.00',
+            stock: 18,
+            categoryId: getCatId('Sofas & Armchairs'),
+            imageUrl: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=1000&q=80',
         },
         {
-            id: 'seed-prod-usbc-hub',
-            name: '7-in-1 Aluminum USB-C Hub',
-            description: 'Multi-port adapter with 4K HDMI, 100W Power Delivery, SD/TF card reader, and high-speed USB 3.0 ports.',
-            price: '4.50',
+            id: 'seed-furn-fluted-armchair',
+            name: 'Curved Velvet Accent Chair',
+            description: 'Curved barrel armchair with tailored vertical fluting details, upholstered in warm taupe velvet with brass-capped tapered legs.',
+            price: '279.00',
+            stock: 15,
+            categoryId: getCatId('Sofas & Armchairs'),
+            imageUrl: 'https://images.unsplash.com/photo-1581539250439-c96689b516dd?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-linen-chaise',
+            name: 'Linen Slipcovered Modular Chaise',
+            description: 'Deep-seated relaxed lounge chaise with a removable washed natural Belgian linen slipcover and goose-feather fill blend.',
+            price: '495.00',
+            stock: 10,
+            categoryId: getCatId('Sofas & Armchairs'),
+            imageUrl: 'https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-shearling-bench',
+            name: 'Contemporary Minimalist Daybed',
+            description: 'Low-profile architectural daybed with a solid walnut plinth base and button-tufted natural linen mattress cushion.',
+            price: '449.00',
+            stock: 8,
+            categoryId: getCatId('Sofas & Armchairs'),
+            imageUrl: 'https://images.unsplash.com/photo-1567016432779-094069958ea5?auto=format&fit=crop&w=1000&q=80',
+        },
+
+        // --- 2. Tables & Desks ($79–$349) ---
+        {
+            id: 'seed-furn-walnut-dining-table',
+            name: 'Solid Walnut Oval Dining Table',
+            description: 'Hand-finished solid walnut dining table featuring rounded bullnose edges and sculptural pillared trestle pedestal legs.',
+            price: '345.00',
+            stock: 8,
+            categoryId: getCatId('Tables & Desks'),
+            imageUrl: 'https://images.unsplash.com/photo-1615066390971-03e4e1c36ddf?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-travertine-coffee-table',
+            name: 'Travertine Stone Round Coffee Table',
+            description: 'Honed Italian travertine stone coffee table with natural porous veining and a monolithic geometric pedestal base.',
+            price: '249.00',
+            stock: 14,
+            categoryId: getCatId('Tables & Desks'),
+            imageUrl: 'https://images.unsplash.com/photo-1533090481720-856c6e3c1fdc?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-oak-writing-desk',
+            name: 'Architectural Oak Writing Desk',
+            description: 'Clean-lined executive writing desk crafted from white oak with two discreet soft-close drawers and integrated cable trough.',
+            price: '285.00',
+            stock: 16,
+            categoryId: getCatId('Tables & Desks'),
+            imageUrl: 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-fluted-side-table',
+            name: 'Matte Ceramic Fluted Side Table',
+            description: 'Cylindrical accent side table crafted in matte ivory stoneware with subtle fluted geometric relief.',
+            price: '89.00',
+            stock: 24,
+            categoryId: getCatId('Tables & Desks'),
+            imageUrl: 'https://images.unsplash.com/photo-1532372320572-cda25653a26d?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-nesting-tables',
+            name: 'Oak & Brass Nesting Tables',
+            description: 'Set of two graduated circular accent tables with solid white oak tops and antique brushed brass sled frames.',
+            price: '165.00',
+            stock: 18,
+            categoryId: getCatId('Tables & Desks'),
+            imageUrl: 'https://images.unsplash.com/photo-1530018607912-eff2daa1bac4?auto=format&fit=crop&w=1000&q=80',
+        },
+
+        // --- 3. Bedroom Furniture ($129–$499) ---
+        {
+            id: 'seed-furn-platform-bed',
+            name: 'Upholstered Low Platform Bed Frame',
+            description: 'Queen-sized floating platform bed with an integrated low-profile headboard in textured sand linen weave.',
+            price: '485.00',
+            stock: 9,
+            categoryId: getCatId('Bedroom Furniture'),
+            imageUrl: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-walnut-nightstand',
+            name: 'Walnut Two-Drawer Nightstand',
+            description: 'Compact bedside table in natural walnut grain with hand-carved finger pulls and solid wood mortise joints.',
+            price: '175.00',
+            stock: 22,
+            categoryId: getCatId('Bedroom Furniture'),
+            imageUrl: 'https://images.unsplash.com/photo-1532372576444-dda954194ad0?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-cane-bedside',
+            name: 'Woven Cane Bedside Table',
+            description: 'Bohemian-modern nightstand featuring natural rattan cane door panels and a light honey oak frame.',
+            price: '145.00',
+            stock: 18,
+            categoryId: getCatId('Bedroom Furniture'),
+            imageUrl: 'https://images.unsplash.com/photo-1595428774223-ef52624120d2?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-bedroom-bench',
+            name: 'Oatmeal Wool Bedroom Bench',
+            description: 'End-of-bed bench upholstered in durable oatmeal herringbone wool blend over tapered solid walnut dowel legs.',
+            price: '215.00',
+            stock: 15,
+            categoryId: getCatId('Bedroom Furniture'),
+            imageUrl: 'https://images.unsplash.com/photo-1595526114035-0d45ed16cfbf?auto=format&fit=crop&w=1000&q=80',
+        },
+
+        // --- 4. Lighting ($29–$149) ---
+        {
+            id: 'seed-furn-pleated-table-lamp',
+            name: 'Ceramic Pleated Shade Table Lamp',
+            description: 'Hand-thrown stoneware lamp base with a warm oatmeal linen pleated shade, casting ambient warm lighting.',
+            price: '79.00',
             stock: 30,
-            categoryId: getCatId('Electronics'),
-            imageUrl: 'https://images.unsplash.com/photo-1625842268584-8f3296236761?auto=format&fit=crop&w=800&q=80',
+            categoryId: getCatId('Lighting'),
+            imageUrl: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=1000&q=80',
         },
         {
-            id: 'seed-prod-laptop-stand',
-            name: 'Adjustable Aluminum Laptop Stand',
-            description: 'Foldable ergonomic riser supporting up to 17-inch laptops with improved heat dissipation airflow.',
-            price: '4.50',
-            stock: 40,
-            categoryId: getCatId('Electronics'),
-            imageUrl: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=800&q=80',
+            id: 'seed-furn-brass-arc-lamp',
+            name: 'Brushed Brass Arc Floor Lamp',
+            description: 'Elegant sweeping brass floor lamp with an authentic marble counterweight base and domed spun-brass diffuser.',
+            price: '145.00',
+            stock: 16,
+            categoryId: getCatId('Lighting'),
+            imageUrl: 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?auto=format&fit=crop&w=1000&q=80',
         },
         {
-            id: 'seed-prod-desk-mat',
-            name: 'Waterproof Leather Desk Mat',
-            description: 'Large extended desk pad (80x40 cm) protecting your table from scratches, spills, and friction.',
-            price: '2.50',
-            stock: 55,
-            categoryId: getCatId('Electronics'),
-            imageUrl: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-anc-earbuds',
-            name: 'True Wireless Noise-Cancelling Earbuds',
-            description: 'Crystal-clear Hi-Fi sound, active noise cancellation, ambient pass-through mode, and 28-hour playtime.',
-            price: '5.99',
+            id: 'seed-furn-ceramic-pendant',
+            name: 'Sculptural Terracotta Pendant Light',
+            description: 'Matte off-white terracotta ceiling pendant designed to wash dining tables and kitchen islands in warm glow.',
+            price: '98.00',
             stock: 25,
-            categoryId: getCatId('Electronics'),
-            imageUrl: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=800&q=80',
+            categoryId: getCatId('Lighting'),
+            imageUrl: 'https://images.unsplash.com/photo-1524484485831-a92ffc0de03f?auto=format&fit=crop&w=1000&q=80',
         },
         {
-            id: 'seed-prod-streaming-webcam',
-            name: '1080p HD Streaming Webcam',
-            description: 'Full HD 60FPS webcam with automatic light correction and built-in stereo dual noise-cancelling mics.',
-            price: '5.50',
+            id: 'seed-furn-mushroom-lamp',
+            name: 'Opaline Glass Accent Lamp',
+            description: 'Whimsical mid-century hand-blown striped opaline glass lamp providing soft, non-glare ambient illumination.',
+            price: '49.00',
+            stock: 35,
+            categoryId: getCatId('Lighting'),
+            imageUrl: 'https://images.unsplash.com/photo-1540932239986-30128078f3c5?auto=format&fit=crop&w=1000&q=80',
+        },
+
+        // --- 5. Storage & Shelving ($99–$399) ---
+        {
+            id: 'seed-furn-oak-bookshelf',
+            name: 'Modular Oak & Steel Bookshelf',
+            description: 'Open five-tier architectural bookshelf combining powder-coated matte black steel uprights with solid white oak planks.',
+            price: '295.00',
+            stock: 12,
+            categoryId: getCatId('Storage & Shelving'),
+            imageUrl: 'https://images.unsplash.com/photo-1594980596870-8aa52a78d8cd?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-tambour-credenza',
+            name: 'Fluted Tambour Media Console',
+            description: 'Low credenza featuring sliding tambour wood doors, brushed brass hardware, and ventilated rear cord management.',
+            price: '385.00',
+            stock: 10,
+            categoryId: getCatId('Storage & Shelving'),
+            imageUrl: 'https://images.unsplash.com/photo-1538688525198-9b88f6f53126?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-arched-cane-cabinet',
+            name: 'Arched Cane Storage Cabinet',
+            description: 'Statement storage cupboard with graceful bentwood arched silhouette and breathable natural woven cane inserts.',
+            price: '349.00',
+            stock: 8,
+            categoryId: getCatId('Storage & Shelving'),
+            imageUrl: 'https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-oak-etagere',
+            name: 'Tiered Oak Display Etagere',
+            description: 'Narrow freestanding corner display unit designed for ceramic vessels, curated books, and framed art.',
+            price: '185.00',
+            stock: 18,
+            categoryId: getCatId('Storage & Shelving'),
+            imageUrl: 'https://images.unsplash.com/photo-1544457070-4cd773b4d71e?auto=format&fit=crop&w=1000&q=80',
+        },
+
+        // --- 6. Home Décor & Accessories ($12–$129) ---
+        {
+            id: 'seed-furn-ceramic-vase',
+            name: 'Wabi-Sabi Sculptural Ceramic Vase',
+            description: 'Raw textured terracotta stoneware vessel with an organic asymmetrical silhouette and chalky matte finish.',
+            price: '45.00',
+            stock: 40,
+            categoryId: getCatId('Home Décor & Accessories'),
+            imageUrl: 'https://images.unsplash.com/photo-1612196808214-b8e1d6145a8c?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-brass-arch-mirror',
+            name: 'Minimalist Brass Arch Mirror',
+            description: 'Full-length floor standing or wall-mounted arch mirror enclosed in a delicate hand-brushed antique brass frame.',
+            price: '115.00',
             stock: 20,
-            categoryId: getCatId('Electronics'),
-            imageUrl: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&w=800&q=80',
-        },
-
-        // --- Clothing ($1.00 - $6.50) ---
-        {
-            id: 'seed-prod-cotton-tee',
-            name: 'Heavyweight Minimalist Cotton T-Shirt',
-            description: '100% pre-shrunk combed organic cotton. Premium relaxed unisex fit with reinforced collar stitching.',
-            price: '3.00',
-            stock: 70,
-            categoryId: getCatId('Clothing'),
-            imageUrl: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=800&q=80',
+            categoryId: getCatId('Home Décor & Accessories'),
+            imageUrl: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1000&q=80',
         },
         {
-            id: 'seed-prod-denim-jacket',
-            name: 'Vintage Wash Denim Jacket',
-            description: 'Classic rugged denim jacket with brass button closures and functional deep front welt pockets.',
-            price: '6.50',
-            stock: 28,
-            categoryId: getCatId('Clothing'),
-            imageUrl: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-fleece-hoodie',
-            name: 'Comfort Fit Pullover Hoodie',
-            description: 'Plush brushed fleece interior with double-lined drawstring hood and spacious kangaroo pocket.',
-            price: '5.99',
+            id: 'seed-furn-linen-throw',
+            name: 'Washed Belgian Linen Throw Blanket',
+            description: 'Generously sized pure flax linen throw with fringed edges, pre-washed for effortless tactile softness and drape.',
+            price: '65.00',
             stock: 45,
-            categoryId: getCatId('Clothing'),
-            imageUrl: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?auto=format&fit=crop&w=800&q=80',
+            categoryId: getCatId('Home Décor & Accessories'),
+            imageUrl: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1000&q=80',
         },
         {
-            id: 'seed-prod-baseball-cap',
-            name: 'Minimalist Cotton Baseball Cap',
-            description: 'Classic 6-panel low-profile dad hat made from breathable cotton twill with adjustable strap back.',
-            price: '2.00',
+            id: 'seed-furn-berber-rug',
+            name: 'Hand-Tufted Berber Wool Area Rug (5x8)',
+            description: 'Berber-inspired area rug with raised geometric linear pile in un-dyed cream and charcoal wool.',
+            price: '125.00',
+            stock: 14,
+            categoryId: getCatId('Home Décor & Accessories'),
+            imageUrl: 'https://images.unsplash.com/photo-1600121848594-d8644e57abab?auto=format&fit=crop&w=1000&q=80',
+        },
+        {
+            id: 'seed-furn-linen-cushions',
+            name: 'Heavy Flax Linen Cushion Covers (Set of 2)',
+            description: 'Pair of 20x20 inch square decorative pillow covers tailored from heavyweight earthy flax linen with hidden zips.',
+            price: '32.00',
             stock: 60,
-            categoryId: getCatId('Clothing'),
-            imageUrl: 'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?auto=format&fit=crop&w=800&q=80',
+            categoryId: getCatId('Home Décor & Accessories'),
+            imageUrl: 'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?auto=format&fit=crop&w=1000&q=80',
         },
         {
-            id: 'seed-prod-canvas-tote',
-            name: 'Heavyweight Eco Canvas Tote Bag',
-            description: 'Durable 16oz cotton canvas tote with heavy-duty shoulder straps, ideal for groceries, books, and daily carry.',
-            price: '1.00',
-            stock: 85,
-            categoryId: getCatId('Clothing'),
-            imageUrl: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80',
-        },
-
-        // --- Books ($3.99 - $5.00) ---
-        {
-            id: 'seed-prod-clean-code',
-            name: 'Clean Code (Robert C. Martin)',
-            description: 'A handbook of agile software craftsmanship. The definitive industry guide to writing readable, maintainable code.',
-            price: '3.99',
-            stock: 50,
-            categoryId: getCatId('Books'),
-            imageUrl: 'https://images.unsplash.com/photo-1532012164546-f432f2e3777a?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-ddia-book',
-            name: 'Designing Data-Intensive Applications',
-            description: 'The big ideas behind reliable, scalable, and maintainable systems by Martin Kleppmann.',
-            price: '5.00',
-            stock: 40,
-            categoryId: getCatId('Books'),
-            imageUrl: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-pragmatic-programmer',
-            name: 'The Pragmatic Programmer',
-            description: 'Your journey to mastery (20th Anniversary Edition) by David Thomas and Andrew Hunt.',
-            price: '4.50',
-            stock: 35,
-            categoryId: getCatId('Books'),
-            imageUrl: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-system-design',
-            name: 'System Design Interview – Volume 1',
-            description: 'Step-by-step framework to master real-world software architecture and distributed systems interviews.',
-            price: '4.99',
-            stock: 45,
-            categoryId: getCatId('Books'),
-            imageUrl: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=800&q=80',
-        },
-
-        // --- Home & Kitchen ($1.50 - $4.99) ---
-        {
-            id: 'seed-prod-ceramic-mug',
-            name: 'Artisan Ceramic Coffee Mug',
-            description: 'Hand-glazed 12oz stoneware mug with comfortable wide-grip handle. Microwave and dishwasher safe.',
-            price: '1.99',
-            stock: 65,
-            categoryId: getCatId('Home & Kitchen'),
-            imageUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-vacuum-bottle',
-            name: 'Insulated Stainless Steel Bottle (750ml)',
-            description: 'Double-walled vacuum insulation keeps liquids icy cold for 24 hours or piping hot for 12 hours.',
-            price: '2.99',
-            stock: 50,
-            categoryId: getCatId('Home & Kitchen'),
-            imageUrl: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-desk-lamp',
-            name: 'Minimalist Dimmable LED Desk Lamp',
-            description: 'Eye-caring architectural LED lamp with 3 color temperatures, touch slider dimmer, and USB charging port.',
-            price: '4.99',
-            stock: 30,
-            categoryId: getCatId('Home & Kitchen'),
-            imageUrl: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-soy-candle',
-            name: 'Natural Soy Wax Aromatherapy Candle',
-            description: 'Non-toxic hand-poured soy wax candle infused with lavender and amber essential oils. 50-hour clean burn.',
-            price: '1.50',
-            stock: 45,
-            categoryId: getCatId('Home & Kitchen'),
-            imageUrl: 'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-lumbar-pillow',
-            name: 'Memory Foam Lumbar Support Cushion',
-            description: 'Ergonomically contoured back pillow relieving lower-spine tension during long coding or desk sessions.',
-            price: '4.00',
-            stock: 35,
-            categoryId: getCatId('Home & Kitchen'),
-            imageUrl: 'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?auto=format&fit=crop&w=800&q=80',
-        },
-
-        // --- Fitness & Wellness ($1.99 - $3.99) ---
-        {
-            id: 'seed-prod-yoga-mat',
-            name: 'Extra Thick Eco Yoga Mat (6mm)',
-            description: 'Non-slip high-density TPE yoga mat providing soft joint cushioning with carrying strap included.',
-            price: '3.99',
-            stock: 40,
-            categoryId: getCatId('Fitness & Wellness'),
-            imageUrl: 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-foam-roller',
-            name: 'Trigger Point Muscle Foam Roller',
-            description: 'Textured deep-tissue grid roller for soothing muscle soreness and accelerating post-workout recovery.',
-            price: '3.50',
-            stock: 35,
-            categoryId: getCatId('Fitness & Wellness'),
-            imageUrl: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-resistance-bands',
-            name: 'Resistance Workout Loop Bands (Set of 5)',
-            description: 'Natural latex exercise bands with 5 resistance levels from light to extra-heavy, with travel pouch.',
-            price: '2.49',
-            stock: 60,
-            categoryId: getCatId('Fitness & Wellness'),
-            imageUrl: 'https://images.unsplash.com/photo-1598289431512-b97b0917affc?auto=format&fit=crop&w=800&q=80',
-        },
-        {
-            id: 'seed-prod-protein-shaker',
-            name: 'Leak-Proof Stainless Steel Shaker (24oz)',
-            description: 'Odor-resistant steel workout shaker bottle with measurement markings and silent whisking ball.',
-            price: '1.99',
-            stock: 50,
-            categoryId: getCatId('Fitness & Wellness'),
-            imageUrl: 'https://images.unsplash.com/photo-1577741314755-048d8525d31e?auto=format&fit=crop&w=800&q=80',
+            id: 'seed-furn-incense-dish',
+            name: 'Smoked Fluted Glass Incense Dish',
+            description: 'Hand-cut heavy borosilicate fluted glass dish designed for Japanese stick incense and botanical rituals.',
+            price: '18.00',
+            stock: 55,
+            categoryId: getCatId('Home Décor & Accessories'),
+            imageUrl: 'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=1000&q=80',
         },
     ];
 
-    for (const p of productsData) {
+    // Upsert all furniture products idempotently
+    for (const p of furnitureProducts) {
         const product = await prisma.product.upsert({
             where: { id: p.id },
             update: {
@@ -362,7 +393,7 @@ async function main() {
             },
         });
 
-        // Ensure product image is synced
+        // Ensure product image is in sync
         await prisma.productImage.deleteMany({
             where: { productId: product.id },
         });
@@ -376,11 +407,12 @@ async function main() {
         });
     }
 
-    console.log(`✅ ${productsData.length} products created with images & updated USD prices`);
+    console.log(`✅ ${furnitureProducts.length} Modern Living furniture & home décor products ready`);
 
     console.log('\n🎉 Seed completed successfully!\n');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔑 LOGIN CREDENTIALS');
+    console.log('🏷️  BRAND: Modern Living');
+    console.log('🛋️  CATALOG: 28 Furniture & Home Décor Products');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(`👑 Admin:    ${adminEmail} / ${adminPassword}`);
     console.log(`👤 Customer: ${customerEmail} / ${customerPassword}`);
